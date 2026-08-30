@@ -1,9 +1,9 @@
 import { Link } from "@tanstack/react-router";
-import { ArrowRight, Brain, ChevronRight, Layers, Minus, Plus, SatelliteDish, ScanLine, Shield } from "lucide-react";
+import { ArrowRight, Brain, ChevronRight, SatelliteDish, ScanLine, Shield } from "lucide-react";
 
 import { FeatureCard, SectionTitle } from "@/components/brand/primitives";
-import { TrackSvgMap } from "@/components/maps/TrackSvgMap";
-import { featuresData, forecastTrack, observedTrack, uncertaintyCone } from "@/data/mockData";
+import { CycloneTrackingPreview } from "@/components/maps/CycloneTrackingPreview";
+import { featuresData } from "@/data/mockData";
 
 const icons = { SatelliteDish, Brain, ScanLine, Shield };
 
@@ -63,36 +63,23 @@ export function FeaturesSection() {
             </Link>
           </div>
 
-          <div className="relative mt-5 overflow-hidden rounded-xl border border-border">
-            <TrackSvgMap
-              observed={observedTrack}
-              forecast={forecastTrack}
-              cone={uncertaintyCone}
-              markerLabel="26 May, 02:00 AM"
-              compact
-              className="h-64"
-            />
-            <div className="absolute top-3 right-3 flex flex-col gap-1.5">
-              {[Plus, Minus, Layers].map((Icon, i) => (
-                <span
-                  key={i}
-                  className="inline-flex size-8 items-center justify-center rounded-lg border border-border bg-background/80 text-muted-foreground backdrop-blur"
-                >
-                  <Icon className="size-4" />
-                </span>
-              ))}
-            </div>
+          {/* Realistic India / Bay of Bengal cyclone tracking preview */}
+          <div className="relative mt-5 overflow-hidden rounded-xl border border-border bg-[oklch(0.06_0.015_265)]">
+            <CycloneTrackingPreview className="h-72 w-full" />
           </div>
 
           <div className="mt-4 flex flex-wrap gap-4 text-[11px] text-muted-foreground">
             <span className="flex items-center gap-2">
-              <span className="h-0.5 w-5 rounded bg-cat-vscs" /> Observed Track
+              <span className="h-0.5 w-5 rounded" style={{ backgroundColor: "oklch(0.78 0.16 52)" }} />
+              Observed Track
             </span>
             <span className="flex items-center gap-2">
-              <span className="h-0.5 w-5 rounded bg-cyan" /> Forecast Track
+              <span className="h-0.5 w-5 rounded bg-cyan" />
+              AI Predicted Track
             </span>
             <span className="flex items-center gap-2">
-              <span className="size-2.5 rounded-sm bg-primary/40" /> Uncertainty Cone
+              <span className="size-2.5 rounded-sm" style={{ backgroundColor: "oklch(0.72 0.13 213 / 0.35)" }} />
+              Uncertainty Cone
             </span>
           </div>
         </div>
