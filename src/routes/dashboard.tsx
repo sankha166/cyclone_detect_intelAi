@@ -18,6 +18,8 @@ import { useState } from "react";
 
 import { CycloneLogo } from "@/components/brand/primitives";
 
+import * as Popover from "@radix-ui/react-popover";
+
 export const Route = createFileRoute("/dashboard")({
   head: () => ({
     meta: [
@@ -179,14 +181,44 @@ function DashboardLayout() {
           </label>
 
           <div className="ml-auto flex items-center gap-3">
-            <button
-              type="button"
-              aria-label="Notifications"
-              className="relative rounded-lg border border-border p-2 text-muted-foreground hover:text-foreground"
-            >
-              <Bell className="size-4" />
-              <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-danger" />
-            </button>
+            <Popover.Root>
+  <Popover.Trigger asChild>
+    <button
+      type="button"
+      aria-label="Notifications"
+      className="relative rounded-lg border border-border p-2 text-muted-foreground hover:text-foreground"
+    >
+      <Bell className="size-4" />
+      <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-danger" />
+    </button>
+  </Popover.Trigger>
+
+  <Popover.Portal>
+    <Popover.Content
+      sideOffset={8}
+      align="end"
+      className="z-50 w-80 rounded-xl border border-border bg-card p-4 shadow-xl"
+    >
+      <h3 className="mb-3 text-sm font-semibold text-foreground">
+        Notifications
+      </h3>
+
+      <div className="space-y-3 text-sm">
+        <div className="rounded-lg border border-border p-3">
+          ⚠️ Cyclone ESCS detected in Bay of Bengal
+        </div>
+
+        <div className="rounded-lg border border-border p-3">
+          📡 New satellite imagery received
+        </div>
+
+        <div className="rounded-lg border border-border p-3">
+          ✅ Forecast model updated
+        </div>
+      </div>
+    </Popover.Content>
+  </Popover.Portal>
+</Popover.Root>
             <div className="flex items-center gap-2.5">
               <span className="inline-flex size-9 items-center justify-center rounded-full bg-primary/15 text-sm font-semibold text-cyan">
                 AR
