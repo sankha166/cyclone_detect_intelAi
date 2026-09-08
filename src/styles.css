@@ -137,9 +137,38 @@
   color-scheme: dark;
 }
 
+.light {
+  color-scheme: light;
+  --background: oklch(0.98 0.006 250);
+  --foreground: oklch(0.2 0.025 255);
+  --surface: oklch(0.99 0.004 250);
+  --surface-2: oklch(0.94 0.012 250);
+  --glass: oklch(1 0 0 / 72%);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.2 0.025 255);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.2 0.025 255);
+  --secondary: oklch(0.94 0.012 250);
+  --secondary-foreground: oklch(0.25 0.025 255);
+  --muted: oklch(0.94 0.012 250);
+  --muted-foreground: oklch(0.45 0.025 255);
+  --accent: oklch(0.93 0.018 245);
+  --accent-foreground: oklch(0.2 0.025 255);
+  --border: oklch(0.2 0.025 255 / 14%);
+  --input: oklch(0.2 0.025 255 / 18%);
+  --sidebar: oklch(0.96 0.01 250);
+  --sidebar-foreground: oklch(0.24 0.025 255);
+  --sidebar-accent: oklch(0.91 0.02 245);
+  --sidebar-accent-foreground: oklch(0.2 0.025 255);
+  --sidebar-border: oklch(0.2 0.025 255 / 12%);
+}
+
 @layer base {
   * {
     border-color: var(--color-border);
+  }
+  html.light {
+    color-scheme: light;
   }
 
   html {
@@ -172,6 +201,11 @@
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
   }
+    html.light body {
+    background:
+      radial-gradient(1200px 800px at 78% 18%, color-mix(in oklab, var(--primary) 8%, transparent), transparent 60%),
+      linear-gradient(180deg, oklch(1 0 0) 0%, var(--background) 55%, oklch(0.96 0.01 250) 100%);
+  }
 
   h1,
   h2,
@@ -180,6 +214,23 @@
     font-family: var(--font-display);
     letter-spacing: -0.02em;
   }
+}
+/* Leaflet dark theming */
+.leaflet-container {
+  background: oklch(0.08 0.02 264);
+  font-family: var(--font-sans);
+}
+.leaflet-control-attribution,
+.leaflet-bar a {
+  background: color-mix(in oklab, oklch(0.14 0.026 264) 90%, transparent) !important;
+  color: var(--muted-foreground) !important;
+  border-color: var(--border) !important;
+}
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+  background: oklch(0.14 0.026 264);
+  color: var(--foreground);
+  border: 1px solid var(--border);
 }
 
 @utility glass {

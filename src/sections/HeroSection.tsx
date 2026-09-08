@@ -113,7 +113,7 @@ export function HeroSection() {
         initial={{ opacity: 0, x: 40 }}
         animate={{ opacity: 1, x: 0 }}
         transition={{ duration: 0.5, delay: 0.45 }}
-        className="pointer-events-none absolute bottom-14 right-6 z-20 hidden lg:block xl:right-10 2xl:right-16"
+        className="pointer-events-none absolute bottom-35 right- z-10 hidden lg:block xl:right-10 2xl:right-1"
       >
         <div className="pointer-events-auto w-[13.5rem] xl:w-60">
           <LiveCycloneCard compact />
@@ -126,7 +126,7 @@ export function HeroSection() {
 /* ── Extracted card so it can be rendered in both mobile and desktop slots ── */
 function LiveCycloneCard({ compact = false }: { compact?: boolean }) {
   return (
-    <GlassCard className={compact ? "p-4" : "p-8"}>
+    <GlassCard className={compact ? "p-4" : "p-9"}>
       <div className="flex items-center gap-2">
         <LiveDot />
         <span className="text-[10px] font-bold tracking-[0.18em] text-foreground uppercase">

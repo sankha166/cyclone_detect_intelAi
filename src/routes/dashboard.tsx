@@ -1,8 +1,9 @@
-import { Link, Outlet, createFileRoute, useRouterState } from "@tanstack/react-router";
+import { Link, Outlet, createFileRoute, useNavigate, useRouterState } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import {
   Bell,
   ChevronLeft,
+  ChevronDown,
   Database,
   FileText,
   Gauge,
@@ -17,6 +18,8 @@ import {
 import { useState } from "react";
 
 import { CycloneLogo } from "@/components/brand/primitives";
+import { ThemeToggle } from "@/components/layout/ThemeToggle";
+import { endLocalSession } from "@/lib/session";
 
 export const Route = createFileRoute("/dashboard")({
   head: () => ({
@@ -61,6 +64,15 @@ function DashboardLayout() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [unread, setUnread] = useState(3);
+  const navigate = useNavigate();
+
+  const logout = () => {
+    endLocalSession();
+    void navigate({ to: "/login" });
+  };
 
   const nav = (
     <nav className="flex h-full flex-col gap-6 overflow-y-auto p-4">
@@ -179,23 +191,59 @@ function DashboardLayout() {
           </label>
 
           <div className="ml-auto flex items-center gap-3">
+            <ThemeToggle />
             <button
               type="button"
               aria-label="Notifications"
-              className="relative rounded-lg border border-border p-2 text-muted-foreground hover:text-foreground"
+              aria-expanded={notificationsOpen}
+              onClick={() => {
+                setNotificationsOpen((value) => !value);
+                setProfileOpen(false);
+              }}
+              className="relative rounded-lg border border-border p-2 text-muted-foreground hover:bg-surface-2 hover:text-foreground"
             >
               <Bell className="size-4" />
-              <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-danger" />
+              {unread > 0 ? <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-danger" /> : null}
             </button>
-            <div className="flex items-center gap-2.5">
-              <span className="inline-flex size-9 items-center justify-center rounded-full bg-primary/15 text-sm font-semibold text-cyan">
-                AR
-              </span>
-              <span className="hidden text-left sm:block">
-                <span className="block text-sm font-medium text-foreground">Ananya Rao</span>
-                <span className="block text-[11px] text-muted-foreground">Senior Analyst</span>
-              </span>
+            <div className="relative">
+              <button
+                type="button"
+                aria-label="Open profile menu"
+                aria-expanded={profileOpen}
+                onClick={() => {
+                  setProfileOpen((value) => !value);
+                  setNotificationsOpen(false);
+                }}
+                className="flex items-center gap-2.5 rounded-xl px-1.5 py-1 text-left hover:bg-surface-2"
+              >
+                <span className="inline-flex size-9 items-center justify-center rounded-full bg-primary/15 text-sm font-semibold text-cyan">AR</span>
+                <span className="hidden sm:block">
+                  <span className="block text-sm font-medium text-foreground">Ananya Rao</span>
+                  <span className="block text-[11px] text-muted-foreground">Senior Analyst</span>
+                </span>
+                <ChevronDown className="hidden size-4 text-muted-foreground sm:block" />
+              </button>
+              {profileOpen ? (
+                <div className="absolute top-12 right-0 z-40 w-48 rounded-xl border border-border bg-surface p-1.5 shadow-lg">
+                  <Link to="/dashboard/settings" onClick={() => setProfileOpen(false)} className="block rounded-lg px-3 py-2 text-sm text-foreground hover:bg-surface-2">Profile & settings</Link>
+                  <button type="button" onClick={logout} className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-danger hover:bg-danger/10">Log out</button>
+                </div>
+              ) : null}
             </div>
+            {notificationsOpen ? (
+              <div className="absolute top-14 right-5 z-40 w-[min(22rem,calc(100vw-2rem))] rounded-xl border border-border bg-surface p-4 shadow-lg">
+                <div className="flex items-center justify-between gap-3">
+                  <h2 className="text-sm font-semibold text-foreground">Notifications</h2>
+                  <button type="button" onClick={() => setUnread(0)} className="text-xs font-medium text-cyan hover:underline">Mark all read</button>
+                </div>
+                <ul className="mt-3 space-y-1">
+                  <li className="rounded-lg bg-primary/10 px-3 py-2 text-xs text-foreground">Bay of Bengal system has a 78% track confidence at +24h.</li>
+                  <li className="rounded-lg bg-primary/10 px-3 py-2 text-xs text-foreground">New satellite pass available for analysis.</li>
+                  <li className="rounded-lg bg-primary/10 px-3 py-2 text-xs text-foreground">Weekly model accuracy digest is ready.</li>
+                </ul>
+                <p className="mt-3 text-[11px] text-muted-foreground">{unread ? `${unread} unread alerts` : "All alerts are read"}</p>
+              </div>
+            ) : null}
           </div>
         </header>
 

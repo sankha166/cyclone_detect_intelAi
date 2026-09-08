@@ -3,6 +3,7 @@ import { Menu, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { CycloneLogo, GradientButton } from "@/components/brand/primitives";
+import { ThemeToggle } from "@/components/layout/ThemeToggle";
 import { navLinks } from "@/data/mockData";
 import { cn } from "@/lib/utils";
 
@@ -54,6 +55,7 @@ export function Navbar() {
         </ul>
 
         <div className="hidden items-center gap-3 lg:flex">
+          <ThemeToggle />
           <Link
             to="/login"
             className="rounded-xl border border-border px-5 py-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-surface-2"
@@ -91,6 +93,7 @@ export function Navbar() {
             ))}
           </ul>
           <div className="flex gap-3">
+            <ThemeToggle />
             <Link
               to="/login"
               onClick={() => setOpen(false)}

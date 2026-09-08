@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { AuthLayout } from "@/components/auth/AuthLayout";
 import { SocialLoginButtons } from "@/components/auth/SocialLoginButtons";
 import { GradientButton } from "@/components/brand/primitives";
+import { startLocalSession } from "@/lib/session";
 
 const title = "Create Account — Cyclone AI";
 const description = "Join Cyclone AI to monitor, classify and forecast tropical cyclones with AI-assisted satellite intelligence.";
@@ -60,6 +61,7 @@ function SignupPage() {
           event.preventDefault();
           setLoading(true);
           setTimeout(() => {
+            startLocalSession();
             setLoading(false);
             void navigate({ to: "/dashboard" });
           }, 900);

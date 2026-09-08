@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 
 import earthPanel from "@/assets/earth-auth-panel.jpg";
 import { CycloneLogo } from "@/components/brand/primitives";
+import { ThemeToggle } from "@/components/layout/ThemeToggle";
 
 export function AuthLayout({
   eyebrow,
@@ -63,8 +64,11 @@ export function AuthLayout({
         initial={{ opacity: 0, x: 40 }}
         animate={{ opacity: 1, x: 0 }}
         transition={{ duration: 0.6 }}
-        className="flex items-center justify-center bg-surface/40 px-5 py-14 sm:px-10"
+        className="relative flex items-center justify-center bg-surface/40 px-5 py-14 sm:px-10"
       >
+        <div className="absolute top-5 right-5">
+          <ThemeToggle />
+        </div>
         <div className="w-full max-w-md">{children}</div>
       </motion.main>
     </div>
