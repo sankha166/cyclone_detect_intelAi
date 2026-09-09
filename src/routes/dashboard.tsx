@@ -1,8 +1,9 @@
-import { Link, Outlet, createFileRoute, useRouterState } from "@tanstack/react-router";
+import { Link, Outlet, createFileRoute, useNavigate, useRouterState } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import {
   Bell,
   ChevronLeft,
+  ChevronDown,
   Database,
   FileText,
   Gauge,
@@ -17,6 +18,8 @@ import {
 import { useState } from "react";
 
 import { CycloneLogo } from "@/components/brand/primitives";
+import { ThemeToggle } from "@/components/layout/ThemeToggle";
+import { endLocalSession } from "@/lib/session";
 
 import * as Popover from "@radix-ui/react-popover";
 
@@ -63,6 +66,15 @@ function DashboardLayout() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [unread, setUnread] = useState(3);
+  const navigate = useNavigate();
+
+  const logout = () => {
+    endLocalSession();
+    void navigate({ to: "/login" });
+  };
 
   const nav = (
     <nav className="flex h-full flex-col gap-6 overflow-y-auto p-4">
@@ -228,6 +240,20 @@ function DashboardLayout() {
                 <span className="block text-[11px] text-muted-foreground">Senior Analyst</span>
               </span>
             </div>
+            {notificationsOpen ? (
+              <div className="absolute top-14 right-5 z-40 w-[min(22rem,calc(100vw-2rem))] rounded-xl border border-border bg-surface p-4 shadow-lg">
+                <div className="flex items-center justify-between gap-3">
+                  <h2 className="text-sm font-semibold text-foreground">Notifications</h2>
+                  <button type="button" onClick={() => setUnread(0)} className="text-xs font-medium text-cyan hover:underline">Mark all read</button>
+                </div>
+                <ul className="mt-3 space-y-1">
+                  <li className="rounded-lg bg-primary/10 px-3 py-2 text-xs text-foreground">Bay of Bengal system has a 78% track confidence at +24h.</li>
+                  <li className="rounded-lg bg-primary/10 px-3 py-2 text-xs text-foreground">New satellite pass available for analysis.</li>
+                  <li className="rounded-lg bg-primary/10 px-3 py-2 text-xs text-foreground">Weekly model accuracy digest is ready.</li>
+                </ul>
+                <p className="mt-3 text-[11px] text-muted-foreground">{unread ? `${unread} unread alerts` : "All alerts are read"}</p>
+              </div>
+            ) : null}
           </div>
         </header>
 

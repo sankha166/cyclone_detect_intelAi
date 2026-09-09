@@ -117,6 +117,12 @@ function RootShell({ children }: { children: ReactNode }) {
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
 
+  useEffect(() => {
+    const saved = window.localStorage.getItem("cyclone-ai-theme");
+    document.documentElement.classList.toggle("light", saved === "light");
+    document.documentElement.classList.toggle("dark", saved !== "light");
+  }, []);
+    
   return (
     <QueryClientProvider client={queryClient}>
       {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}

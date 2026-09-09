@@ -1,9 +1,11 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { Copy, KeyRound } from "lucide-react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { Copy, KeyRound, LogOut } from "lucide-react";
 import { useState } from "react";
 
 import { GhostButton, GradientButton } from "@/components/brand/primitives";
 import { apiKeys } from "@/data/mockData";
+import { ThemeToggle } from "@/components/layout/ThemeToggle";
+import { endLocalSession } from "@/lib/session";
 
 export const Route = createFileRoute("/dashboard/settings")({
   head: () => ({
@@ -45,12 +47,21 @@ function Toggle({ label, hint, defaultOn }: { label: string; hint: string; defau
 
 function SettingsPage() {
   const [tab, setTab] = useState<(typeof tabs)[number]>("Profile");
+  const navigate = useNavigate();
+
+  const logout = () => {
+    endLocalSession();
+    void navigate({ to: "/login" });
+  };
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-foreground">Settings</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Manage your profile, alerts and API access.</p>
+        <div className="flex items-start justify-between gap-4">
+          <p className="mt-1 text-sm text-muted-foreground">Manage your profile, alerts and API access.</p>
+          <ThemeToggle />
+        </div>
       </div>
 
       <div className="flex gap-2">
@@ -93,7 +104,13 @@ function SettingsPage() {
                 />
               </label>
             ))}
-            <GradientButton type="submit">Save changes</GradientButton>
+            <div className="flex flex-wrap gap-3">
+              <GradientButton type="submit">Save changes</GradientButton>
+              <button type="button" onClick={logout} className="inline-flex items-center justify-center gap-2 rounded-xl border border-danger/35 px-5 py-3 text-sm font-semibold text-danger transition-colors hover:bg-danger/10">
+                <LogOut className="size-4" />
+                Log out
+              </button>
+            </div>
           </form>
         ) : tab === "Notifications" ? (
           <div className="max-w-2xl">

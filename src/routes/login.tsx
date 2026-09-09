@@ -5,7 +5,7 @@ import { useState } from "react";
 import { AuthLayout } from "@/components/auth/AuthLayout";
 import { SocialLoginButtons } from "@/components/auth/SocialLoginButtons";
 import { GradientButton } from "@/components/brand/primitives";
-
+import { startLocalSession } from "@/lib/session";
 const title = "Sign In — Cyclone AI";
 const description = "Access the Cyclone AI intelligence dashboard: live storm tracking, AI classification and track forecasts.";
 
@@ -47,6 +47,7 @@ function LoginPage() {
           event.preventDefault();
           setLoading(true);
           setTimeout(() => {
+            startLocalSession();
             setLoading(false);
             void navigate({ to: "/dashboard" });
           }, 900);
