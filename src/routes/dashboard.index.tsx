@@ -130,19 +130,7 @@ function OverviewPage() {
                     <Cell key={entry.name} fill={categoryMeta[entry.name].chart} />
                   ))}
                 </Pie>
-                <Tooltip
-  contentStyle={{
-    background: "#1e293b",
-    border: "1px solid #475569",
-    borderRadius: "0.75rem",
-  }}
-  itemStyle={{
-    color: "#ffffff",
-  }}
-  labelStyle={{
-    color: "#ffffff",
-  }}
-/>
+                <Tooltip contentStyle={tooltipStyle} />
               </PieChart>
             </ResponsiveContainer>
           </div>
