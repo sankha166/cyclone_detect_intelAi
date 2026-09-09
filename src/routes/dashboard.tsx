@@ -21,8 +21,6 @@ import { CycloneLogo } from "@/components/brand/primitives";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
 import { endLocalSession } from "@/lib/session";
 
-import * as Popover from "@radix-ui/react-popover";
-
 export const Route = createFileRoute("/dashboard")({
   head: () => ({
     meta: [
@@ -193,52 +191,44 @@ function DashboardLayout() {
           </label>
 
           <div className="ml-auto flex items-center gap-3">
-            <Popover.Root>
-  <Popover.Trigger asChild>
-    <button
-      type="button"
-      aria-label="Notifications"
-      className="relative rounded-lg border border-border p-2 text-muted-foreground hover:text-foreground"
-    >
-      <Bell className="size-4" />
-      <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-danger" />
-    </button>
-  </Popover.Trigger>
-
-  <Popover.Portal>
-    <Popover.Content
-      sideOffset={8}
-      align="end"
-      className="z-50 w-80 rounded-xl border border-border bg-card p-4 shadow-xl"
-    >
-      <h3 className="mb-3 text-sm font-semibold text-foreground">
-        Notifications
-      </h3>
-
-      <div className="space-y-3 text-sm">
-        <div className="rounded-lg border border-border p-3">
-          ⚠️ Cyclone ESCS detected in Bay of Bengal
-        </div>
-
-        <div className="rounded-lg border border-border p-3">
-          📡 New satellite imagery received
-        </div>
-
-        <div className="rounded-lg border border-border p-3">
-          ✅ Forecast model updated
-        </div>
-      </div>
-    </Popover.Content>
-  </Popover.Portal>
-</Popover.Root>
-            <div className="flex items-center gap-2.5">
-              <span className="inline-flex size-9 items-center justify-center rounded-full bg-primary/15 text-sm font-semibold text-cyan">
-                AR
-              </span>
-              <span className="hidden text-left sm:block">
-                <span className="block text-sm font-medium text-foreground">Ananya Rao</span>
-                <span className="block text-[11px] text-muted-foreground">Senior Analyst</span>
-              </span>
+            <ThemeToggle />
+            <button
+              type="button"
+              aria-label="Notifications"
+              aria-expanded={notificationsOpen}
+              onClick={() => {
+                setNotificationsOpen((value) => !value);
+                setProfileOpen(false);
+              }}
+              className="relative rounded-lg border border-border p-2 text-muted-foreground hover:bg-surface-2 hover:text-foreground"
+            >
+              <Bell className="size-4" />
+              {unread > 0 ? <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-danger" /> : null}
+            </button>
+            <div className="relative">
+              <button
+                type="button"
+                aria-label="Open profile menu"
+                aria-expanded={profileOpen}
+                onClick={() => {
+                  setProfileOpen((value) => !value);
+                  setNotificationsOpen(false);
+                }}
+                className="flex items-center gap-2.5 rounded-xl px-1.5 py-1 text-left hover:bg-surface-2"
+              >
+                <span className="inline-flex size-9 items-center justify-center rounded-full bg-primary/15 text-sm font-semibold text-cyan">AR</span>
+                <span className="hidden sm:block">
+                  <span className="block text-sm font-medium text-foreground">Ananya Rao</span>
+                  <span className="block text-[11px] text-muted-foreground">Senior Analyst</span>
+                </span>
+                <ChevronDown className="hidden size-4 text-muted-foreground sm:block" />
+              </button>
+              {profileOpen ? (
+                <div className="absolute top-12 right-0 z-40 w-48 rounded-xl border border-border bg-surface p-1.5 shadow-lg">
+                  <Link to="/dashboard/settings" onClick={() => setProfileOpen(false)} className="block rounded-lg px-3 py-2 text-sm text-foreground hover:bg-surface-2">Profile & settings</Link>
+                  <button type="button" onClick={logout} className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-danger hover:bg-danger/10">Log out</button>
+                </div>
+              ) : null}
             </div>
             {notificationsOpen ? (
               <div className="absolute top-14 right-5 z-40 w-[min(22rem,calc(100vw-2rem))] rounded-xl border border-border bg-surface p-4 shadow-lg">
