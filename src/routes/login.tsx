@@ -6,8 +6,10 @@ import { AuthLayout } from "@/components/auth/AuthLayout";
 import { SocialLoginButtons } from "@/components/auth/SocialLoginButtons";
 import { GradientButton } from "@/components/brand/primitives";
 import { startLocalSession } from "@/lib/session";
+import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 const title = "Sign In — Cyclone AI";
-const description = "Access the Cyclone AI intelligence dashboard: live storm tracking, AI classification and track forecasts.";
+const description =
+  "Access the Cyclone AI intelligence dashboard: live storm tracking, AI classification and track forecasts.";
 
 export const Route = createFileRoute("/login")({
   head: () => ({
@@ -25,6 +27,7 @@ function LoginPage() {
   const navigate = useNavigate();
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   return (
     <AuthLayout
@@ -43,21 +46,38 @@ function LoginPage() {
 
       <form
         className="mt-8 space-y-5"
-        onSubmit={(event) => {
+        onSubmit={async (event) => {
           event.preventDefault();
           setLoading(true);
-          setTimeout(() => {
+          setError(null);
+          const form = new FormData(event.currentTarget);
+          const email = String(form.get("email") ?? "");
+          const password = String(form.get("password") ?? "");
+          if (isSupabaseConfigured) {
+            const { error: authError } = await supabase.auth.signInWithPassword({
+              email,
+              password,
+            });
+            if (authError) {
+              setError(authError.message);
+              setLoading(false);
+              return;
+            }
+          } else {
             startLocalSession();
-            setLoading(false);
-            void navigate({ to: "/dashboard" });
-          }, 900);
+          }
+          setLoading(false);
+          void navigate({ to: "/dashboard" });
         }}
       >
         <label className="block">
-          <span className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Email</span>
+          <span className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+            Email
+          </span>
           <span className="mt-2 flex items-center gap-3 rounded-xl border border-border bg-surface/70 px-4 transition-colors focus-within:border-primary/60">
             <Mail className="size-4 text-muted-foreground" />
             <input
+              name="email"
               type="email"
               required
               defaultValue="analyst@cyclone.ai"
@@ -68,10 +88,13 @@ function LoginPage() {
         </label>
 
         <label className="block">
-          <span className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Password</span>
+          <span className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+            Password
+          </span>
           <span className="mt-2 flex items-center gap-3 rounded-xl border border-border bg-surface/70 px-4 transition-colors focus-within:border-primary/60">
             <Lock className="size-4 text-muted-foreground" />
             <input
+              name="password"
               type={showPassword ? "text" : "password"}
               required
               defaultValue="cyclone2026"
@@ -91,13 +114,22 @@ function LoginPage() {
 
         <div className="flex items-center justify-between text-sm">
           <label className="flex items-center gap-2 text-muted-foreground">
-            <input type="checkbox" className="size-4 rounded border-border bg-surface accent-[oklch(0.62_0.18_235)]" />
+            <input
+              type="checkbox"
+              className="size-4 rounded border-border bg-surface accent-[oklch(0.62_0.18_235)]"
+            />
             Remember me
           </label>
           <button type="button" className="font-medium text-cyan hover:underline">
             Forgot password?
           </button>
         </div>
+
+        {error ? (
+          <p className="text-sm text-danger" role="alert">
+            {error}
+          </p>
+        ) : null}
 
         <GradientButton type="submit" className="w-full" disabled={loading}>
           {loading ? <Loader2 className="size-4 animate-spin" /> : null}

@@ -113,7 +113,7 @@ export function HeroSection() {
         initial={{ opacity: 0, x: 40 }}
         animate={{ opacity: 1, x: 0 }}
         transition={{ duration: 0.5, delay: 0.45 }}
-        className="pointer-events-none absolute bottom-35 right- z-10 hidden lg:block xl:right-10 2xl:right-1"
+        className="pointer-events-none absolute bottom-45 right-10 z-10 hidden lg:block xl:right-10 2xl:right-1"
       >
         <div className="pointer-events-auto w-[13.5rem] xl:w-60">
           <LiveCycloneCard compact />

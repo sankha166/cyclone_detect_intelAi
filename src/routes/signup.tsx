@@ -6,9 +6,11 @@ import { AuthLayout } from "@/components/auth/AuthLayout";
 import { SocialLoginButtons } from "@/components/auth/SocialLoginButtons";
 import { GradientButton } from "@/components/brand/primitives";
 import { startLocalSession } from "@/lib/session";
+import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 
 const title = "Create Account — Cyclone AI";
-const description = "Join Cyclone AI to monitor, classify and forecast tropical cyclones with AI-assisted satellite intelligence.";
+const description =
+  "Join Cyclone AI to monitor, classify and forecast tropical cyclones with AI-assisted satellite intelligence.";
 
 export const Route = createFileRoute("/signup")({
   head: () => ({
@@ -38,6 +40,7 @@ function SignupPage() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const score = useMemo(() => scorePassword(password), [password]);
 
   return (
@@ -57,22 +60,48 @@ function SignupPage() {
 
       <form
         className="mt-8 space-y-5"
-        onSubmit={(event) => {
+        onSubmit={async (event) => {
           event.preventDefault();
           setLoading(true);
-          setTimeout(() => {
+          setError(null);
+          const form = new FormData(event.currentTarget);
+          const email = String(form.get("email") ?? "");
+          const fullName = String(form.get("full_name") ?? "");
+          const organization = String(form.get("organization") ?? "");
+          if (isSupabaseConfigured) {
+            const { data, error: authError } = await supabase.auth.signUp({
+              email,
+              password,
+              options: { data: { full_name: fullName, organization } },
+            });
+            if (authError) {
+              setError(authError.message);
+              setLoading(false);
+              return;
+            }
+            if (!data.session) {
+              setError(
+                "Account created. Check your email to confirm your account before signing in.",
+              );
+              setLoading(false);
+              return;
+            }
+          } else {
             startLocalSession();
-            setLoading(false);
-            void navigate({ to: "/dashboard" });
-          }, 900);
+          }
+          setLoading(false);
+          void navigate({ to: "/dashboard" });
         }}
       >
         <div className="grid gap-5 sm:grid-cols-2">
           <label className="block">
-            <span className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Full name</span>
+            <span className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+              Full name
+            </span>
             <span className="mt-2 flex items-center gap-3 rounded-xl border border-border bg-surface/70 px-4 focus-within:border-primary/60">
               <User className="size-4 text-muted-foreground" />
               <input
+                name="full_name"
                 required
                 placeholder="Ananya Rao"
                 className="w-full bg-transparent py-3 text-sm text-foreground outline-none placeholder:text-muted-foreground/70"
@@ -80,10 +109,13 @@ function SignupPage() {
             </span>
           </label>
           <label className="block">
-            <span className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Organisation</span>
+            <span className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+              Organisation
+            </span>
             <span className="mt-2 flex items-center gap-3 rounded-xl border border-border bg-surface/70 px-4 focus-within:border-primary/60">
               <Building2 className="size-4 text-muted-foreground" />
               <input
+                name="organization"
                 placeholder="IMD / Research lab"
                 className="w-full bg-transparent py-3 text-sm text-foreground outline-none placeholder:text-muted-foreground/70"
               />
@@ -92,10 +124,13 @@ function SignupPage() {
         </div>
 
         <label className="block">
-          <span className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Email</span>
+          <span className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+            Email
+          </span>
           <span className="mt-2 flex items-center gap-3 rounded-xl border border-border bg-surface/70 px-4 focus-within:border-primary/60">
             <Mail className="size-4 text-muted-foreground" />
             <input
+              name="email"
               type="email"
               required
               placeholder="you@agency.gov"
@@ -104,8 +139,16 @@ function SignupPage() {
           </span>
         </label>
 
+        {error ? (
+          <p className="text-sm text-danger" role="alert">
+            {error}
+          </p>
+        ) : null}
+
         <label className="block">
-          <span className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Password</span>
+          <span className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+            Password
+          </span>
           <span className="mt-2 flex items-center gap-3 rounded-xl border border-border bg-surface/70 px-4 focus-within:border-primary/60">
             <Lock className="size-4 text-muted-foreground" />
             <input
@@ -134,7 +177,9 @@ function SignupPage() {
                 />
               ))}
             </span>
-            <span className="w-20 text-right text-[11px] text-muted-foreground">{strengthLabels[score]}</span>
+            <span className="w-20 text-right text-[11px] text-muted-foreground">
+              {strengthLabels[score]}
+            </span>
           </span>
         </label>
 
