@@ -1,4 +1,11 @@
-import { Link, Outlet, createFileRoute, useNavigate, useRouterState } from "@tanstack/react-router";
+import {
+  Link,
+  Outlet,
+  createFileRoute,
+  redirect,
+  useNavigate,
+  useRouterState,
+} from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import {
   Bell,
@@ -15,19 +22,36 @@ import {
   Settings,
   X,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { CycloneLogo } from "@/components/brand/primitives";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
 import { endLocalSession } from "@/lib/session";
+import { isSupabaseConfigured, supabase } from "@/lib/supabase";
+import { getNotifications, markNotificationRead } from "@/lib/live-intelligence";
 
 export const Route = createFileRoute("/dashboard")({
+  beforeLoad: async () => {
+    if (isSupabaseConfigured) {
+      const { data } = await supabase.auth.getSession();
+      if (!data.session) throw redirect({ to: "/login" });
+    } else {
+      throw redirect({ to: "/login" });
+    }
+  },
   head: () => ({
     meta: [
       { title: "Dashboard — Cyclone AI" },
-      { name: "description", content: "Cyclone AI operations dashboard: detection, classification, track prediction and historical archives." },
+      {
+        name: "description",
+        content:
+          "Cyclone AI operations dashboard: detection, classification, track prediction and historical archives.",
+      },
       { property: "og:title", content: "Dashboard — Cyclone AI" },
-      { property: "og:description", content: "Monitor live cyclone systems and run AI analysis from one workspace." },
+      {
+        property: "og:description",
+        content: "Monitor live cyclone systems and run AI analysis from one workspace.",
+      },
     ],
   }),
   component: DashboardLayout,
@@ -66,10 +90,38 @@ function DashboardLayout() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
-  const [unread, setUnread] = useState(3);
+  const [notifications, setNotifications] = useState<
+    Array<{ id: string; title: string; message: string; read_at: string | null }>
+  >([]);
+  const unread = notifications.filter((notification) => !notification.read_at).length;
   const navigate = useNavigate();
+  const [profile, setProfile] = useState({
+    name: "Analyst",
+    role: "Cyclone AI user",
+    initials: "AI",
+  });
 
-  const logout = () => {
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    void supabase.auth.getUser().then(({ data }) => {
+      const name = String(
+        data.user?.user_metadata?.full_name || data.user?.email?.split("@")[0] || "Analyst",
+      );
+      setProfile({
+        name,
+        role: String(data.user?.user_metadata?.organization || "Cyclone AI user"),
+        initials: name.slice(0, 2).toUpperCase(),
+      });
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    void getNotifications().then((items) => setNotifications(items as typeof notifications));
+  }, []);
+
+  const logout = async () => {
+    if (isSupabaseConfigured) await supabase.auth.signOut();
     endLocalSession();
     void navigate({ to: "/login" });
   };
@@ -139,7 +191,9 @@ function DashboardLayout() {
             aria-label="Toggle sidebar"
             className="text-muted-foreground hover:text-foreground"
           >
-            <ChevronLeft className={`size-4 transition-transform ${collapsed ? "rotate-180" : ""}`} />
+            <ChevronLeft
+              className={`size-4 transition-transform ${collapsed ? "rotate-180" : ""}`}
+            />
           </button>
         </div>
         {nav}
@@ -203,7 +257,9 @@ function DashboardLayout() {
               className="relative rounded-lg border border-border p-2 text-muted-foreground hover:bg-surface-2 hover:text-foreground"
             >
               <Bell className="size-4" />
-              {unread > 0 ? <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-danger" /> : null}
+              {unread > 0 ? (
+                <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-danger" />
+              ) : null}
             </button>
             <div className="relative">
               <button
@@ -216,17 +272,31 @@ function DashboardLayout() {
                 }}
                 className="flex items-center gap-2.5 rounded-xl px-1.5 py-1 text-left hover:bg-surface-2"
               >
-                <span className="inline-flex size-9 items-center justify-center rounded-full bg-primary/15 text-sm font-semibold text-cyan">AR</span>
+                <span className="inline-flex size-9 items-center justify-center rounded-full bg-primary/15 text-sm font-semibold text-cyan">
+                  {profile.initials}
+                </span>
                 <span className="hidden sm:block">
-                  <span className="block text-sm font-medium text-foreground">Ananya Rao</span>
-                  <span className="block text-[11px] text-muted-foreground">Senior Analyst</span>
+                  <span className="block text-sm font-medium text-foreground">{profile.name}</span>
+                  <span className="block text-[11px] text-muted-foreground">{profile.role}</span>
                 </span>
                 <ChevronDown className="hidden size-4 text-muted-foreground sm:block" />
               </button>
               {profileOpen ? (
                 <div className="absolute top-12 right-0 z-40 w-48 rounded-xl border border-border bg-surface p-1.5 shadow-lg">
-                  <Link to="/dashboard/settings" onClick={() => setProfileOpen(false)} className="block rounded-lg px-3 py-2 text-sm text-foreground hover:bg-surface-2">Profile & settings</Link>
-                  <button type="button" onClick={logout} className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-danger hover:bg-danger/10">Log out</button>
+                  <Link
+                    to="/dashboard/settings"
+                    onClick={() => setProfileOpen(false)}
+                    className="block rounded-lg px-3 py-2 text-sm text-foreground hover:bg-surface-2"
+                  >
+                    Profile & settings
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={logout}
+                    className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-danger hover:bg-danger/10"
+                  >
+                    Log out
+                  </button>
                 </div>
               ) : null}
             </div>
@@ -234,14 +304,44 @@ function DashboardLayout() {
               <div className="absolute top-14 right-5 z-40 w-[min(22rem,calc(100vw-2rem))] rounded-xl border border-border bg-surface p-4 shadow-lg">
                 <div className="flex items-center justify-between gap-3">
                   <h2 className="text-sm font-semibold text-foreground">Notifications</h2>
-                  <button type="button" onClick={() => setUnread(0)} className="text-xs font-medium text-cyan hover:underline">Mark all read</button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await Promise.all(
+                        notifications
+                          .filter((notification) => !notification.read_at)
+                          .map((notification) => markNotificationRead(notification.id)),
+                      );
+                      setNotifications((items) =>
+                        items.map((item) => ({ ...item, read_at: new Date().toISOString() })),
+                      );
+                    }}
+                    className="text-xs font-medium text-cyan hover:underline"
+                  >
+                    Mark all read
+                  </button>
                 </div>
                 <ul className="mt-3 space-y-1">
-                  <li className="rounded-lg bg-primary/10 px-3 py-2 text-xs text-foreground">Bay of Bengal system has a 78% track confidence at +24h.</li>
-                  <li className="rounded-lg bg-primary/10 px-3 py-2 text-xs text-foreground">New satellite pass available for analysis.</li>
-                  <li className="rounded-lg bg-primary/10 px-3 py-2 text-xs text-foreground">Weekly model accuracy digest is ready.</li>
+                  {notifications.length === 0 ? (
+                    <li className="rounded-lg bg-primary/10 px-3 py-2 text-xs text-muted-foreground">
+                      No notifications yet.
+                    </li>
+                  ) : (
+                    notifications.map((notification) => (
+                      <li
+                        key={notification.id}
+                        onClick={() => void markNotificationRead(notification.id)}
+                        className={`rounded-lg px-3 py-2 text-xs text-foreground ${notification.read_at ? "bg-surface-2" : "bg-primary/10"}`}
+                      >
+                        <p className="font-semibold">{notification.title}</p>
+                        <p className="mt-1 text-muted-foreground">{notification.message}</p>
+                      </li>
+                    ))
+                  )}
                 </ul>
-                <p className="mt-3 text-[11px] text-muted-foreground">{unread ? `${unread} unread alerts` : "All alerts are read"}</p>
+                <p className="mt-3 text-[11px] text-muted-foreground">
+                  {unread ? `${unread} unread alerts` : "All alerts are read"}
+                </p>
               </div>
             ) : null}
           </div>

@@ -1,17 +1,26 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import { Route as RouteIcon } from "lucide-react";
+import { useEffect, useState } from "react";
 
 import { CategoryBadge, GradientButton } from "@/components/brand/primitives";
 import { categoryMeta, classificationResult, type CategoryCode } from "@/data/mockData";
+import { getAnalysis, type AnalysisRow } from "@/lib/dashboard-data";
+import { isSupabaseConfigured } from "@/lib/supabase";
 
 export const Route = createFileRoute("/dashboard/classify")({
   head: () => ({
     meta: [
       { title: "Classification — Cyclone AI" },
-      { name: "description", content: "Classify tropical cyclone intensity with confidence scores and Dvorak analysis." },
+      {
+        name: "description",
+        content: "Classify tropical cyclone intensity with confidence scores and Dvorak analysis.",
+      },
       { property: "og:title", content: "Classification — Cyclone AI" },
-      { property: "og:description", content: "Review AI-assisted cyclone intensity classification and confidence scores." },
+      {
+        property: "og:description",
+        content: "Review AI-assisted cyclone intensity classification and confidence scores.",
+      },
     ],
   }),
   component: ClassifyPage,
@@ -43,7 +52,14 @@ function Gauge({ value, max }: { value: number; max: number }) {
         animate={{ strokeDashoffset: circumference * (1 - pct) }}
         transition={{ duration: 1.1, ease: "easeOut" }}
       />
-      <text x="110" y="100" textAnchor="middle" fontSize="30" fontWeight="700" fill="var(--foreground)">
+      <text
+        x="110"
+        y="100"
+        textAnchor="middle"
+        fontSize="30"
+        fontWeight="700"
+        fill="var(--foreground)"
+      >
         {value}
       </text>
       <text x="110" y="120" textAnchor="middle" fontSize="12" fill="var(--muted-foreground)">
@@ -54,6 +70,33 @@ function Gauge({ value, max }: { value: number; max: number }) {
 }
 
 function ClassifyPage() {
+  const [analysis, setAnalysis] = useState<AnalysisRow | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    const id = localStorage.getItem("cyclone-ai-latest-analysis-id");
+    if (!id) return;
+    void getAnalysis(id)
+      .then(setAnalysis)
+      .catch((cause) =>
+        setError(cause instanceof Error ? cause.message : "Unable to load classification."),
+      );
+  }, []);
+
+  const wind = analysis?.wind_speed_kt ?? classificationResult.msw;
+  const category: CategoryCode =
+    wind >= 120 ? "SuCS" : wind >= 90 ? "ESCS" : wind >= 64 ? "VSCS" : wind >= 48 ? "SCS" : "CS";
+  const liveResult = analysis
+    ? {
+        category,
+        msw: wind,
+        mswMax: 140,
+        dvorak: "Derived from wind",
+        scores: order.map((code) => ({ code, value: code === category ? 100 : 0 })),
+      }
+    : classificationResult;
+
   return (
     <div className="space-y-6">
       <div>
@@ -63,31 +106,47 @@ function ClassifyPage() {
         </p>
       </div>
 
+      {error ? (
+        <p
+          className="rounded-xl border border-danger/30 bg-danger/10 p-3 text-sm text-danger"
+          role="alert"
+        >
+          {error}
+        </p>
+      ) : null}
+      {isSupabaseConfigured && !analysis ? (
+        <p className="rounded-xl border border-border bg-surface/50 p-4 text-sm text-muted-foreground">
+          Run a detection first. Your live classification will appear here.
+        </p>
+      ) : null}
+
       <div className="grid gap-6 lg:grid-cols-[minmax(0,40%)_minmax(0,60%)]">
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           className="flex flex-col items-center rounded-2xl border border-border bg-glass p-6 text-center backdrop-blur-xl"
         >
-          <p className="text-xs tracking-[0.18em] text-muted-foreground uppercase">Predicted category</p>
+          <p className="text-xs tracking-[0.18em] text-muted-foreground uppercase">
+            Predicted category
+          </p>
           <p className="mt-3 text-2xl font-bold text-foreground">
-            {categoryMeta[classificationResult.category].name}
+            {categoryMeta[liveResult.category].name}
           </p>
           <div className="mt-3">
-            <CategoryBadge code={classificationResult.category} full />
+            <CategoryBadge code={liveResult.category} full />
           </div>
           <div className="mt-6">
-            <Gauge value={classificationResult.msw} max={classificationResult.mswMax} />
+            <Gauge value={liveResult.msw} max={liveResult.mswMax} />
           </div>
           <div className="mt-4 grid w-full grid-cols-2 gap-3 text-sm">
             <div className="rounded-xl bg-surface-2/70 p-3">
               <p className="text-[11px] text-muted-foreground">Dvorak T-number</p>
-              <p className="font-mono text-lg font-bold text-foreground">T{classificationResult.dvorak}</p>
+              <p className="font-mono text-lg font-bold text-foreground">{liveResult.dvorak}</p>
             </div>
             <div className="rounded-xl bg-surface-2/70 p-3">
               <p className="text-[11px] text-muted-foreground">Top confidence</p>
               <p className="font-mono text-lg font-bold text-cyan">
-                {classificationResult.scores.find((s) => s.code === classificationResult.category)?.value}%
+                {liveResult.scores.find((s) => s.code === liveResult.category)?.value}%
               </p>
             </div>
           </div>
@@ -98,7 +157,7 @@ function ClassifyPage() {
             <h2 className="text-sm font-semibold text-foreground">Class probabilities</h2>
             <ul className="mt-5 space-y-4">
               {order.map((code) => {
-                const score = classificationResult.scores.find((s) => s.code === code)?.value ?? 0;
+                const score = liveResult.scores.find((s) => s.code === code)?.value ?? 0;
                 return (
                   <li key={code}>
                     <div className="flex items-center justify-between text-sm">
@@ -141,9 +200,11 @@ function ClassifyPage() {
                   ].map(([code, range]) => (
                     <tr
                       key={code}
-                      className={`border-t border-border ${code === classificationResult.category ? "bg-primary/8" : ""}`}
+                      className={`border-t border-border ${code === liveResult.category ? "bg-primary/8" : ""}`}
                     >
-                      <td className="py-2.5 text-foreground">{categoryMeta[code as CategoryCode].name}</td>
+                      <td className="py-2.5 text-foreground">
+                        {categoryMeta[code as CategoryCode].name}
+                      </td>
                       <td className="py-2.5">
                         <CategoryBadge code={code as CategoryCode} />
                       </td>

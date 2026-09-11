@@ -5,7 +5,6 @@ import { useState } from "react";
 import { AuthLayout } from "@/components/auth/AuthLayout";
 import { SocialLoginButtons } from "@/components/auth/SocialLoginButtons";
 import { GradientButton } from "@/components/brand/primitives";
-import { startLocalSession } from "@/lib/session";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 const title = "Sign In — Cyclone AI";
 const description =
@@ -53,18 +52,18 @@ function LoginPage() {
           const form = new FormData(event.currentTarget);
           const email = String(form.get("email") ?? "");
           const password = String(form.get("password") ?? "");
-          if (isSupabaseConfigured) {
-            const { error: authError } = await supabase.auth.signInWithPassword({
-              email,
-              password,
-            });
-            if (authError) {
-              setError(authError.message);
-              setLoading(false);
-              return;
-            }
-          } else {
-            startLocalSession();
+          if (!isSupabaseConfigured) {
+            setError(
+              "Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to .env.local.",
+            );
+            setLoading(false);
+            return;
+          }
+          const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
+          if (authError) {
+            setError(authError.message);
+            setLoading(false);
+            return;
           }
           setLoading(false);
           void navigate({ to: "/dashboard" });
@@ -80,7 +79,6 @@ function LoginPage() {
               name="email"
               type="email"
               required
-              defaultValue="analyst@cyclone.ai"
               placeholder="you@agency.gov"
               className="w-full bg-transparent py-3 text-sm text-foreground outline-none placeholder:text-muted-foreground/70"
             />
@@ -97,7 +95,6 @@ function LoginPage() {
               name="password"
               type={showPassword ? "text" : "password"}
               required
-              defaultValue="cyclone2026"
               placeholder="••••••••"
               className="w-full bg-transparent py-3 text-sm text-foreground outline-none placeholder:text-muted-foreground/70"
             />

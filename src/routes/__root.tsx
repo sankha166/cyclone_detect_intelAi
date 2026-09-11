@@ -78,10 +78,18 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: "Cyclone AI — Tropical Cyclone Intelligence" },
-      { name: "description", content: "AI-powered tropical cyclone intelligence for detection, classification and track forecasting." },
+      {
+        name: "description",
+        content:
+          "AI-powered tropical cyclone intelligence for detection, classification and track forecasting.",
+      },
       { name: "author", content: "Lovable" },
       { property: "og:title", content: "Cyclone AI — Tropical Cyclone Intelligence" },
-      { property: "og:description", content: "AI-powered tropical cyclone intelligence for detection, classification and track forecasting." },
+      {
+        property: "og:description",
+        content:
+          "AI-powered tropical cyclone intelligence for detection, classification and track forecasting.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
       { name: "twitter:site", content: "@Lovable" },
@@ -118,11 +126,18 @@ function RootComponent() {
   const { queryClient } = Route.useRouteContext();
 
   useEffect(() => {
+    if (window.location.hash.includes("error=") || window.location.hash.includes("error_code=")) {
+      window.history.replaceState(
+        {},
+        document.title,
+        `${window.location.pathname}${window.location.search}`,
+      );
+    }
     const saved = window.localStorage.getItem("cyclone-ai-theme");
     document.documentElement.classList.toggle("light", saved === "light");
     document.documentElement.classList.toggle("dark", saved !== "light");
   }, []);
-    
+
   return (
     <QueryClientProvider client={queryClient}>
       {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}

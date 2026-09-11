@@ -1,18 +1,27 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import { Search } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { CategoryBadge } from "@/components/brand/primitives";
-import { cyclones } from "@/data/mockData";
+import { cyclones, type CategoryCode } from "@/data/mockData";
+import { getCycloneArchive, type CycloneRow } from "@/lib/dashboard-data";
+import { isSupabaseConfigured } from "@/lib/supabase";
 
 export const Route = createFileRoute("/dashboard/cyclones/")({
   head: () => ({
     meta: [
       { title: "Cyclone Archive — Cyclone AI" },
-      { name: "description", content: "Browse historical tropical cyclone profiles and tracks from the Indian Ocean region." },
+      {
+        name: "description",
+        content:
+          "Browse historical tropical cyclone profiles and tracks from the Indian Ocean region.",
+      },
       { property: "og:title", content: "Cyclone Archive — Cyclone AI" },
-      { property: "og:description", content: "Browse historical cyclone profiles, intensity timelines and tracks." },
+      {
+        property: "og:description",
+        content: "Browse historical cyclone profiles, intensity timelines and tracks.",
+      },
     ],
   }),
   component: CycloneArchive,
@@ -23,15 +32,43 @@ const basins = ["All basins", "Bay of Bengal", "Arabian Sea"] as const;
 function CycloneArchive() {
   const [query, setQuery] = useState("");
   const [basin, setBasin] = useState<(typeof basins)[number]>("All basins");
+  const [liveCyclones, setLiveCyclones] = useState<CycloneRow[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    void getCycloneArchive()
+      .then(setLiveCyclones)
+      .catch((cause) =>
+        setError(cause instanceof Error ? cause.message : "Unable to load cyclone archive."),
+      );
+  }, []);
+
+  const source = isSupabaseConfigured
+    ? liveCyclones.map((cyclone) => ({
+        id: cyclone.id,
+        name: cyclone.name ?? cyclone.storm_id,
+        year: cyclone.season ?? 0,
+        basin: cyclone.basin ?? "Unknown basin",
+        peak: "CS" as CategoryCode,
+        maxWind: 0,
+        minPressure: 0,
+        duration: cyclone.status,
+        landfall: "Not recorded",
+        summary: `Source: ${cyclone.source ?? "Cyclone AI"}`,
+        track: cyclone.track,
+        timeline: [],
+      }))
+    : cyclones;
 
   const list = useMemo(
     () =>
-      cyclones.filter(
+      source.filter(
         (c) =>
           (basin === "All basins" || c.basin === basin) &&
           `${c.name} ${c.year}`.toLowerCase().includes(query.trim().toLowerCase()),
       ),
-    [query, basin],
+    [query, basin, source],
   );
 
   return (
@@ -42,6 +79,15 @@ function CycloneArchive() {
           Historical North Indian Ocean systems with peak intensity, landfall and track records.
         </p>
       </div>
+
+      {error ? (
+        <p
+          className="rounded-xl border border-danger/30 bg-danger/10 p-3 text-sm text-danger"
+          role="alert"
+        >
+          {error}
+        </p>
+      ) : null}
 
       <div className="flex flex-wrap items-center gap-3">
         <label className="flex min-w-60 flex-1 items-center gap-3 rounded-xl border border-border bg-surface/70 px-3.5">
@@ -101,7 +147,9 @@ function CycloneArchive() {
                 </div>
                 <div className="rounded-xl bg-surface-2/70 p-3">
                   <dt className="text-[11px] text-muted-foreground">Min pressure</dt>
-                  <dd className="font-mono font-semibold text-foreground">{cyclone.minPressure} hPa</dd>
+                  <dd className="font-mono font-semibold text-foreground">
+                    {cyclone.minPressure} hPa
+                  </dd>
                 </div>
               </dl>
               <p className="mt-3 text-xs text-muted-foreground">Landfall: {cyclone.landfall}</p>

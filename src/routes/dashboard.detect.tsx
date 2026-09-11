@@ -54,7 +54,8 @@ function DetectPage() {
       const modelResult = await runCycloneModel(inputRef.current.files[0], date, time);
       setResult(modelResult);
       localStorage.setItem("cyclone-ai-latest-analysis", JSON.stringify(modelResult));
-      await saveAnalysis(inputRef.current.files[0], modelResult);
+      const analysisId = await saveAnalysis(inputRef.current.files[0], modelResult);
+      if (analysisId) localStorage.setItem("cyclone-ai-latest-analysis-id", analysisId);
       setPhase("done");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Analysis failed. Please try again.");

@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { motion } from "framer-motion";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 
 import { CategoryBadge } from "@/components/brand/primitives";
 import { CycloneMap } from "@/components/maps/CycloneMap";
@@ -12,6 +12,10 @@ import {
   landfallInfo,
   predictedForecastTrack,
 } from "@/data/cycloneTrackData";
+import { getAnalysis } from "@/lib/dashboard-data";
+import { isSupabaseConfigured } from "@/lib/supabase";
+import type { TrackPoint } from "@/data/cycloneTrackData";
+import type { CategoryCode } from "@/data/mockData";
 
 export const Route = createFileRoute("/dashboard/predict")({
   head: () => ({
@@ -49,9 +53,8 @@ function LandfallBanner() {
               Landfall Warning — {landfallInfo.warningAlert} Alert
             </p>
             <p className="mt-0.5 text-sm font-semibold text-foreground">
-              Predicted Landfall:{" "}
-              <span className="text-warning">{landfallInfo.region}</span>{" "}
-              ~{landfallInfo.etaHours}h
+              Predicted Landfall: <span className="text-warning">{landfallInfo.region}</span> ~
+              {landfallInfo.etaHours}h
             </p>
           </div>
         </div>
@@ -59,26 +62,18 @@ function LandfallBanner() {
           <span className="font-mono text-xs font-bold text-cyan">
             {landfallInfo.confidence}% confidence
           </span>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">
-            {landfallInfo.coastalZone}
-          </p>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">{landfallInfo.coastalZone}</p>
         </div>
       </div>
       <p className="mt-2 text-[11px] text-muted-foreground">
         ETA: {landfallInfo.etaString} • Expected:{" "}
-        <span className="font-semibold text-warning">
-          {landfallInfo.expectedCategory}
-        </span>{" "}
-        @ {landfallInfo.expectedMsw} kt • Storm Surge:{" "}
-        <span className="font-semibold text-danger">
-          {landfallInfo.stormSurge}
-        </span>
+        <span className="font-semibold text-warning">{landfallInfo.expectedCategory}</span> @{" "}
+        {landfallInfo.expectedMsw} kt • Storm Surge:{" "}
+        <span className="font-semibold text-danger">{landfallInfo.stormSurge}</span>
       </p>
       <p className="mt-1.5 text-[11px] text-muted-foreground">
         Affected Districts:{" "}
-        <span className="text-foreground">
-          {landfallInfo.affectedDistricts.join(" • ")}
-        </span>
+        <span className="text-foreground">{landfallInfo.affectedDistricts.join(" • ")}</span>
       </p>
     </div>
   );
@@ -95,9 +90,7 @@ function ForecastPositionsTable({
   return (
     <div className="overflow-hidden rounded-2xl border border-border bg-glass shadow-xl backdrop-blur-xl">
       <div className="flex items-center justify-between border-b border-border px-5 py-3.5">
-        <h2 className="text-sm font-semibold text-foreground">
-          Forecast Positions
-        </h2>
+        <h2 className="text-sm font-semibold text-foreground">Forecast Positions</h2>
         <span className="rounded-md border border-border bg-surface/60 px-2 py-0.5 font-mono text-[10px] text-muted-foreground">
           DeepTrack-V4 Ensemble
         </span>
@@ -119,8 +112,7 @@ function ForecastPositionsTable({
             {predictedForecastTrack
               .filter((p) => p.timeOffset > 0)
               .map((row) => {
-                const isActive =
-                  Math.abs(currentHour - row.timeOffset) < 3 && currentHour > 0;
+                const isActive = Math.abs(currentHour - row.timeOffset) < 3 && currentHour > 0;
                 return (
                   <tr
                     key={row.label}
@@ -175,6 +167,45 @@ function PredictPage() {
   const [timelineHour, setTimelineHour] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
+  const [livePoint, setLivePoint] = useState<TrackPoint | null>(null);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    const id = localStorage.getItem("cyclone-ai-latest-analysis-id");
+    if (!id) return;
+    void getAnalysis(id).then((analysis) => {
+      if (analysis.latitude == null || analysis.longitude == null) return;
+      const wind = analysis.wind_speed_kt ?? 0;
+      const category: CategoryCode =
+        wind >= 120
+          ? "SuCS"
+          : wind >= 90
+            ? "ESCS"
+            : wind >= 64
+              ? "VSCS"
+              : wind >= 48
+                ? "SCS"
+                : "CS";
+      setLivePoint({
+        timeOffset: 0,
+        label: "Now",
+        timestamp: `${analysis.request_date} ${analysis.request_time}`,
+        lat: analysis.latitude,
+        lon: analysis.longitude,
+        msw: wind,
+        pressure: analysis.pressure_hpa ?? 0,
+        category,
+        confidence: (analysis.cyclone_probability ?? 0) * 100,
+        speed: 0,
+        heading: "—",
+        headingDeg: 0,
+        r34: 0,
+        r50: 0,
+        r64: 0,
+        distanceToLandfall: 0,
+      });
+    });
+  }, []);
 
   const handleTogglePlay = useCallback(() => {
     setIsPlaying((prev) => {
@@ -196,7 +227,7 @@ function PredictPage() {
   }, []);
 
   // Derive the current cyclone state from timeline position
-  const currentPoint = getInterpolatedState(timelineHour);
+  const currentPoint = livePoint ?? getInterpolatedState(timelineHour);
 
   return (
     <div className="space-y-5">
@@ -216,15 +247,11 @@ function PredictPage() {
               {activeCycloneInfo.statusBadge}
             </span>
           </div>
-          <h1 className="mt-1.5 text-2xl font-bold text-foreground">
-            Track Prediction
-          </h1>
+          <h1 className="mt-1.5 text-2xl font-bold text-foreground">Track Prediction</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             48-hour AI track &amp; intensity forecast for{" "}
-            <span className="font-semibold text-cyan">
-              {activeCycloneInfo.name}
-            </span>{" "}
-            — {activeCycloneInfo.basin}
+            <span className="font-semibold text-cyan">{activeCycloneInfo.name}</span> —{" "}
+            {activeCycloneInfo.basin}
           </p>
         </div>
 
@@ -251,7 +278,6 @@ function PredictPage() {
 
       {/* ── Main Grid: Map (left 60%) + Panels (right 40%) ── */}
       <div className="grid gap-5 xl:grid-cols-[minmax(0,60%)_minmax(0,40%)]">
-
         {/* ── Left Column: Map + Timeline ── */}
         <motion.div
           initial={{ opacity: 0, scale: 0.985 }}
@@ -319,12 +345,8 @@ function PredictPage() {
                 <p className="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
                   {stat.label}
                 </p>
-                <p className={`mt-1 font-mono text-lg font-bold ${stat.color}`}>
-                  {stat.value}
-                </p>
-                <p className="mt-0.5 text-[10px] text-muted-foreground">
-                  {stat.sub}
-                </p>
+                <p className={`mt-1 font-mono text-lg font-bold ${stat.color}`}>{stat.value}</p>
+                <p className="mt-0.5 text-[10px] text-muted-foreground">{stat.sub}</p>
               </div>
             ))}
           </div>
@@ -348,21 +370,15 @@ function PredictPage() {
             </p>
             <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5 text-[11px]">
               <span className="text-muted-foreground">System ID</span>
-              <span className="font-mono text-foreground">
-                {activeCycloneInfo.id}
-              </span>
+              <span className="font-mono text-foreground">{activeCycloneInfo.id}</span>
               <span className="text-muted-foreground">Satellite</span>
               <span className="font-mono leading-tight text-foreground">
                 {activeCycloneInfo.satelliteId}
               </span>
               <span className="text-muted-foreground">Obs. Time</span>
-              <span className="font-mono text-foreground">
-                {activeCycloneInfo.observationTime}
-              </span>
+              <span className="font-mono text-foreground">{activeCycloneInfo.observationTime}</span>
               <span className="text-muted-foreground">Basin</span>
-              <span className="font-mono text-foreground">
-                {activeCycloneInfo.basin}
-              </span>
+              <span className="font-mono text-foreground">{activeCycloneInfo.basin}</span>
             </div>
           </div>
         </motion.div>

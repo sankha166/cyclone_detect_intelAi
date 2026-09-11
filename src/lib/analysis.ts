@@ -68,11 +68,28 @@ export async function saveAnalysis(file: File, result: ModelResponse) {
       longitude: result.current_state.longitude,
       wind_speed_kt: result.current_state.wind_speed_kt,
       pressure_hpa: result.current_state.pressure_hpa,
+      processing_time_ms: null,
+      accuracy: null,
       storm_id: result.tcir_match.storm_id,
       status: "completed",
     })
     .select("id")
     .single();
   if (error) throw error;
+  const current = result.current_state;
+  const forecast = result.forecast_24h;
+  if (forecast.available && forecast.delta_latitude != null && forecast.delta_longitude != null) {
+    const { error: forecastError } = await supabase.from("forecast_points").insert({
+      analysis_id: run.id,
+      lead_hours: 24,
+      valid_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      latitude: current.latitude + forecast.delta_latitude,
+      longitude: current.longitude + forecast.delta_longitude,
+      wind_speed_kt: current.wind_speed_kt + (forecast.delta_wind_speed_kt ?? 0),
+      pressure_hpa: current.pressure_hpa + (forecast.delta_pressure_hpa ?? 0),
+      confidence: result.classification.cyclone_probability,
+    });
+    if (forecastError) throw forecastError;
+  }
   return run.id as string;
 }

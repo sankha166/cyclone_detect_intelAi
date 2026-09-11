@@ -5,7 +5,6 @@ import { useMemo, useState } from "react";
 import { AuthLayout } from "@/components/auth/AuthLayout";
 import { SocialLoginButtons } from "@/components/auth/SocialLoginButtons";
 import { GradientButton } from "@/components/brand/primitives";
-import { startLocalSession } from "@/lib/session";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 
 const title = "Create Account — Cyclone AI";
@@ -68,26 +67,29 @@ function SignupPage() {
           const email = String(form.get("email") ?? "");
           const fullName = String(form.get("full_name") ?? "");
           const organization = String(form.get("organization") ?? "");
-          if (isSupabaseConfigured) {
-            const { data, error: authError } = await supabase.auth.signUp({
-              email,
-              password,
-              options: { data: { full_name: fullName, organization } },
-            });
-            if (authError) {
-              setError(authError.message);
-              setLoading(false);
-              return;
-            }
-            if (!data.session) {
-              setError(
-                "Account created. Check your email to confirm your account before signing in.",
-              );
-              setLoading(false);
-              return;
-            }
-          } else {
-            startLocalSession();
+          if (!isSupabaseConfigured) {
+            setError(
+              "Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to .env.local.",
+            );
+            setLoading(false);
+            return;
+          }
+          const { data, error: authError } = await supabase.auth.signUp({
+            email,
+            password,
+            options: { data: { full_name: fullName, organization } },
+          });
+          if (authError) {
+            setError(authError.message);
+            setLoading(false);
+            return;
+          }
+          if (!data.session) {
+            setError(
+              "Supabase email confirmation is enabled. Disable Confirm email in Supabase Auth settings, then create the account again.",
+            );
+            setLoading(false);
+            return;
           }
           setLoading(false);
           void navigate({ to: "/dashboard" });

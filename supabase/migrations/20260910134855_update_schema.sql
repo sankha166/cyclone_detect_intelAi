@@ -6,6 +6,11 @@ create table if not exists public.profiles (
   full_name text not null default '',
   organization text not null default '',
   role text not null default 'analyst' check (role in ('analyst', 'operator', 'admin')),
+  avatar_url text,
+  location_latitude double precision,
+  location_longitude double precision,
+  location_updated_at timestamptz,
+  notification_preferences jsonb not null default '{"severe_cyclone": true, "landfall": true, "email": false}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -68,8 +73,50 @@ create table if not exists public.reports (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.notifications (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  type text not null check (type in ('cyclone_alert', 'system', 'report')),
+  severity text not null default 'info' check (severity in ('safe', 'moderate', 'danger', 'critical', 'info')),
+  title text not null,
+  message text not null,
+  cyclone_id uuid references public.cyclones(id) on delete set null,
+  read_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
 create index if not exists analysis_runs_user_created_idx on public.analysis_runs(user_id, created_at desc);
 create index if not exists forecast_points_analysis_idx on public.forecast_points(analysis_id, lead_hours);
+create index if not exists notifications_user_created_idx on public.notifications(user_id, created_at desc);
+
+alter table public.profiles
+  add column if not exists avatar_url text,
+  add column if not exists location_latitude double precision,
+  add column if not exists location_longitude double precision,
+  add column if not exists location_updated_at timestamptz,
+  add column if not exists notification_preferences jsonb not null default '{"severe_cyclone": true, "landfall": true, "email": false}'::jsonb;
+
+alter table public.notifications enable row level security;
+drop policy if exists "Users can read their notifications" on public.notifications;
+drop policy if exists "Users can update their notifications" on public.notifications;
+create policy "Users can read their notifications" on public.notifications for select using (auth.uid() = user_id);
+create policy "Users can update their notifications" on public.notifications for update using (auth.uid() = user_id);
+
+create or replace view public.live_cyclone_positions as
+select distinct on (coalesce(storm_id, id::text))
+  id, coalesce(storm_id, id::text) as storm_id, latitude, longitude,
+  wind_speed_kt, pressure_hpa, cyclone_probability, created_at, result
+from public.analysis_runs
+where status = 'completed' and cyclone_detected = true
+  and latitude is not null and longitude is not null
+order by coalesce(storm_id, id::text), created_at desc;
+grant select on public.live_cyclone_positions to anon, authenticated;
+
+-- The table may already exist on remote projects created from an earlier schema.
+-- CREATE TABLE IF NOT EXISTS does not add columns to an existing table.
+alter table public.analysis_runs
+  add column if not exists processing_time_ms integer,
+  add column if not exists accuracy numeric(6,5);
 
 create or replace view public.dashboard_metrics as
 select
@@ -88,6 +135,17 @@ alter table public.forecast_points enable row level security;
 alter table public.cyclones enable row level security;
 alter table public.reports enable row level security;
 
+drop policy if exists "Users can read their profile" on public.profiles;
+drop policy if exists "Users can update their profile" on public.profiles;
+drop policy if exists "Users can read their analyses" on public.analysis_runs;
+drop policy if exists "Users can create analyses" on public.analysis_runs;
+drop policy if exists "Users can update their analyses" on public.analysis_runs;
+drop policy if exists "Users can delete their analyses" on public.analysis_runs;
+drop policy if exists "Users can read forecast points for their analyses" on public.forecast_points;
+drop policy if exists "Users can create forecast points for their analyses" on public.forecast_points;
+drop policy if exists "Anyone can read cyclone archive" on public.cyclones;
+drop policy if exists "Users can read their reports" on public.reports;
+drop policy if exists "Users can create reports" on public.reports;
 create policy "Users can read their profile" on public.profiles for select using (auth.uid() = id);
 create policy "Users can update their profile" on public.profiles for update using (auth.uid() = id);
 create policy "Users can read their analyses" on public.analysis_runs for select using (auth.uid() = user_id);
@@ -112,5 +170,7 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created after insert on auth.users for each row execute procedure public.handle_new_user();
 
 insert into storage.buckets (id, name, public) values ('satellite-images', 'satellite-images', false) on conflict (id) do nothing;
+drop policy if exists "Users can upload satellite images" on storage.objects;
+drop policy if exists "Users can read satellite images" on storage.objects;
 create policy "Users can upload satellite images" on storage.objects for insert to authenticated with check (bucket_id = 'satellite-images' and (storage.foldername(name))[1] = (select auth.uid()::text));
 create policy "Users can read satellite images" on storage.objects for select to authenticated using (bucket_id = 'satellite-images' and (storage.foldername(name))[1] = (select auth.uid()::text));

@@ -1,19 +1,26 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Copy, KeyRound, LogOut } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { GhostButton, GradientButton } from "@/components/brand/primitives";
 import { apiKeys } from "@/data/mockData";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
-import { endLocalSession } from "@/lib/session";
+import { getProfile, updateProfile } from "@/lib/dashboard-data";
+import { supabase } from "@/lib/supabase";
 
 export const Route = createFileRoute("/dashboard/settings")({
   head: () => ({
     meta: [
       { title: "Settings — Cyclone AI" },
-      { name: "description", content: "Configure your Cyclone AI profile, notifications and API access." },
+      {
+        name: "description",
+        content: "Configure your Cyclone AI profile, notifications and API access.",
+      },
       { property: "og:title", content: "Settings — Cyclone AI" },
-      { property: "og:description", content: "Manage Cyclone AI workspace preferences and access settings." },
+      {
+        property: "og:description",
+        content: "Manage Cyclone AI workspace preferences and access settings.",
+      },
     ],
   }),
   component: SettingsPage,
@@ -48,10 +55,27 @@ function Toggle({ label, hint, defaultOn }: { label: string; hint: string; defau
 function SettingsPage() {
   const [tab, setTab] = useState<(typeof tabs)[number]>("Profile");
   const navigate = useNavigate();
+  const [profile, setProfile] = useState({
+    full_name: "",
+    organization: "",
+    email: "",
+    role: "analyst",
+  });
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    void Promise.all([getProfile(), supabase.auth.getUser()]).then(([nextProfile, user]) => {
+      setProfile({
+        full_name: nextProfile.full_name ?? "",
+        organization: nextProfile.organization ?? "",
+        email: user.data.user?.email ?? "",
+        role: nextProfile.role ?? "analyst",
+      });
+    });
+  }, []);
 
   const logout = () => {
-    endLocalSession();
-    void navigate({ to: "/login" });
+    void supabase.auth.signOut().finally(() => void navigate({ to: "/login" }));
   };
 
   return (
@@ -59,7 +83,9 @@ function SettingsPage() {
       <div>
         <h1 className="text-2xl font-bold text-foreground">Settings</h1>
         <div className="flex items-start justify-between gap-4">
-          <p className="mt-1 text-sm text-muted-foreground">Manage your profile, alerts and API access.</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Manage your profile, alerts and API access.
+          </p>
           <ThemeToggle />
         </div>
       </div>
@@ -83,30 +109,52 @@ function SettingsPage() {
 
       <div className="rounded-2xl border border-border bg-glass p-6 backdrop-blur-xl">
         {tab === "Profile" ? (
-          <form className="max-w-xl space-y-5" onSubmit={(e) => e.preventDefault()}>
+          <form
+            className="max-w-xl space-y-5"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              await updateProfile({
+                full_name: profile.full_name,
+                organization: profile.organization,
+              });
+              setSaved(true);
+            }}
+          >
             <div className="flex items-center gap-4">
               <span className="inline-flex size-16 items-center justify-center rounded-full bg-primary/15 text-xl font-bold text-cyan">
-                AR
+                {profile.full_name.slice(0, 2).toUpperCase() || "AI"}
               </span>
               <GhostButton type="button">Change avatar</GhostButton>
             </div>
             {[
-              ["Full name", "Ananya Rao"],
-              ["Email", "analyst@cyclone.ai"],
-              ["Organisation", "India Meteorological Department"],
-              ["Role", "Senior Analyst"],
-            ].map(([label, value]) => (
+              ["Full name", profile.full_name, "full_name", false],
+              ["Email", profile.email, "email", true],
+              ["Organisation", profile.organization, "organization", false],
+              ["Role", profile.role, "role", true],
+            ].map(([label, value, name, disabled]) => (
               <label key={label} className="block">
-                <span className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">{label}</span>
+                <span className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                  {label}
+                </span>
                 <input
-                  defaultValue={value}
+                  name={String(name)}
+                  value={String(value)}
+                  disabled={Boolean(disabled)}
+                  onChange={(event) =>
+                    setProfile((current) => ({ ...current, [String(name)]: event.target.value }))
+                  }
                   className="mt-2 w-full rounded-xl border border-border bg-surface/70 px-4 py-3 text-sm text-foreground outline-none focus:border-primary/60"
                 />
               </label>
             ))}
+            {saved ? <p className="text-sm text-success">Profile updated.</p> : null}
             <div className="flex flex-wrap gap-3">
               <GradientButton type="submit">Save changes</GradientButton>
-              <button type="button" onClick={logout} className="inline-flex items-center justify-center gap-2 rounded-xl border border-danger/35 px-5 py-3 text-sm font-semibold text-danger transition-colors hover:bg-danger/10">
+              <button
+                type="button"
+                onClick={logout}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-danger/35 px-5 py-3 text-sm font-semibold text-danger transition-colors hover:bg-danger/10"
+              >
                 <LogOut className="size-4" />
                 Log out
               </button>
@@ -114,9 +162,20 @@ function SettingsPage() {
           </form>
         ) : tab === "Notifications" ? (
           <div className="max-w-2xl">
-            <Toggle label="Severe cyclone alerts" hint="Push alert when a system reaches VSCS or above" defaultOn />
-            <Toggle label="Landfall warnings" hint="Notify 24 hours before projected landfall" defaultOn />
-            <Toggle label="Model retraining digests" hint="Weekly summary of model accuracy changes" />
+            <Toggle
+              label="Severe cyclone alerts"
+              hint="Push alert when a system reaches VSCS or above"
+              defaultOn
+            />
+            <Toggle
+              label="Landfall warnings"
+              hint="Notify 24 hours before projected landfall"
+              defaultOn
+            />
+            <Toggle
+              label="Model retraining digests"
+              hint="Weekly summary of model accuracy changes"
+            />
             <Toggle label="Email bulletins" hint="Daily basin bulletin to your inbox" defaultOn />
           </div>
         ) : (
@@ -132,9 +191,7 @@ function SettingsPage() {
                   </span>
                   <div>
                     <p className="text-sm font-semibold text-foreground">{key.label}</p>
-                    <p className="font-mono text-xs text-muted-foreground">
-                      {key.id}••••••••••••
-                    </p>
+                    <p className="font-mono text-xs text-muted-foreground">{key.id}••••••••••••</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-4 text-xs text-muted-foreground">

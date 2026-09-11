@@ -1,17 +1,25 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { Download, Search } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { CategoryBadge, GhostButton } from "@/components/brand/primitives";
-import { predictionHistory } from "@/data/mockData";
+import { predictionHistory, type PredictionRow } from "@/data/mockData";
+import { getMyAnalyses, type AnalysisRow } from "@/lib/dashboard-data";
+import { isSupabaseConfigured } from "@/lib/supabase";
 
 export const Route = createFileRoute("/dashboard/history/")({
   head: () => ({
     meta: [
       { title: "Prediction History — Cyclone AI" },
-      { name: "description", content: "Search and review previous cyclone detection, classification and track runs." },
+      {
+        name: "description",
+        content: "Search and review previous cyclone detection, classification and track runs.",
+      },
       { property: "og:title", content: "Prediction History — Cyclone AI" },
-      { property: "og:description", content: "Search previous cyclone intelligence runs and review their details." },
+      {
+        property: "og:description",
+        content: "Search previous cyclone intelligence runs and review their details.",
+      },
     ],
   }),
   component: HistoryPage,
@@ -24,16 +32,46 @@ function HistoryPage() {
   const [query, setQuery] = useState("");
   const [type, setType] = useState<(typeof types)[number]>("All");
   const [page, setPage] = useState(1);
+  const [liveRows, setLiveRows] = useState<AnalysisRow[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    void getMyAnalyses()
+      .then(setLiveRows)
+      .catch((cause) =>
+        setError(cause instanceof Error ? cause.message : "Unable to load history."),
+      );
+  }, []);
+
+  const source: PredictionRow[] = isSupabaseConfigured
+    ? liveRows.map((row) => ({
+        id: row.id,
+        date: `${row.request_date} ${row.request_time}`,
+        type: "Detection",
+        result: row.cyclone_detected ? "Cyclone Detected" : "No Cyclone Found",
+        category: null,
+        confidence: (row.cyclone_probability ?? 0) * 100,
+        status:
+          row.status === "completed"
+            ? "Completed"
+            : row.status === "processing"
+              ? "Processing"
+              : row.status === "failed"
+                ? "Failed"
+                : "Processing",
+      }))
+    : predictionHistory;
 
   const filtered = useMemo(
     () =>
-      predictionHistory.filter(
+      source.filter(
         (row) =>
           (type === "All" || row.type === type) &&
           (query.trim() === "" ||
             `${row.id} ${row.result}`.toLowerCase().includes(query.trim().toLowerCase())),
       ),
-    [query, type],
+    [query, type, source],
   );
 
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
@@ -54,6 +92,15 @@ function HistoryPage() {
           Export CSV
         </GhostButton>
       </div>
+
+      {error ? (
+        <p
+          className="rounded-xl border border-danger/30 bg-danger/10 p-3 text-sm text-danger"
+          role="alert"
+        >
+          {error}
+        </p>
+      ) : null}
 
       <div className="flex flex-wrap items-center gap-3">
         <label className="flex min-w-60 flex-1 items-center gap-3 rounded-xl border border-border bg-surface/70 px-3.5">
