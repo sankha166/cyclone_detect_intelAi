@@ -18,6 +18,7 @@ import {
 
 import { CategoryBadge, CountUp, GradientButton, LiveDot } from "@/components/brand/primitives";
 import { TrackSvgMap } from "@/components/maps/TrackSvgMap";
+import { LiveCycloneMap } from "@/components/maps/LiveCycloneMap";
 import {
   accuracyTrend,
   basinDistribution,
@@ -38,6 +39,7 @@ import {
   type DashboardMetrics,
 } from "@/lib/dashboard-data";
 import { isSupabaseConfigured } from "@/lib/supabase";
+import { getCycloneCategory } from "@/lib/cyclone-category";
 import { useEffect, useState } from "react";
 import {
   createAlertNotification,
@@ -67,16 +69,71 @@ function OverviewPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!isSupabaseConfigured) return;
-    void Promise.all([getDashboardMetrics(), getMyAnalyses()])
-      .then(([nextMetrics, analyses]) => {
-        setMetrics(nextMetrics);
-        setAllAnalyses(analyses);
-        setRecent(analyses.slice(0, 6));
+    const localResult = localStorage.getItem("cyclone-ai-latest-analysis");
+    const localRow = localResult
+      ? (() => {
+          try {
+            const result = JSON.parse(localResult) as import("@/lib/analysis").ModelResponse;
+            return {
+              id: "local-latest",
+              created_at: new Date().toISOString(),
+              request_date: result.request.date,
+              request_time: result.request.time,
+              status: "completed" as const,
+              cyclone_detected: result.classification.cyclone_detected,
+              cyclone_probability: result.classification.cyclone_probability,
+              storm_id: result.tcir_match?.storm_id ?? null,
+              latitude: result.current_state?.latitude ?? null,
+              longitude: result.current_state?.longitude ?? null,
+              wind_speed_kt: result.current_state?.wind_speed_kt ?? null,
+              pressure_hpa: result.current_state?.pressure_hpa ?? null,
+              processing_time_ms: result.processing_time_ms ?? null,
+              accuracy: result.accuracy ?? null,
+              result: result as unknown as Record<string, unknown>,
+            } satisfies AnalysisRow;
+          } catch {
+            return null;
+          }
+        })()
+      : null;
+    if (!isSupabaseConfigured) {
+      if (localRow) {
+        setAllAnalyses([localRow]);
+        setRecent([localRow]);
+      }
+      return;
+    }
+    void getMyAnalyses()
+      .then((analyses) => {
+        const merged = localRow && !analyses.some((row) => row.request_date === localRow.request_date && row.request_time === localRow.request_time)
+          ? [localRow, ...analyses]
+          : analyses;
+        const completed = merged.filter((row) => row.status === "completed");
+        const timed = completed.filter((row) => row.processing_time_ms != null);
+        const labeled = completed.filter((row) => row.accuracy != null);
+        setMetrics({
+          total_predictions: completed.length,
+          cyclones_detected: completed.filter((row) => row.cyclone_detected === true).length,
+          average_accuracy:
+            labeled.length > 0
+              ? (labeled.reduce((sum, row) => sum + (row.accuracy ?? 0), 0) / labeled.length) * 100
+              : null,
+          average_processing_time:
+            timed.length > 0
+              ? timed.reduce((sum, row) => sum + (row.processing_time_ms ?? 0), 0) / timed.length / 1000
+              : null,
+        });
+        setAllAnalyses(merged);
+        setRecent(merged.slice(0, 6));
       })
-      .catch((cause) =>
-        setError(cause instanceof Error ? cause.message : "Unable to load live dashboard data."),
-      );
+      .catch((cause) => {
+        if (localRow) {
+          setAllAnalyses([localRow]);
+          setRecent([localRow]);
+          return;
+        }
+        setError(cause instanceof Error ? cause.message : "Unable to load live dashboard data.");
+      });
   }, []);
 
   useEffect(() => {
@@ -101,28 +158,54 @@ function OverviewPage() {
   }, []);
 
   const liveAccuracy = allAnalyses
-    .filter((row) => row.accuracy != null)
+    .filter((row) => row.created_at >= new Date(Date.now() - 30 * 86400000).toISOString())
     .slice(0, 30)
     .reverse()
-    .map((row, index) => ({
-      date: row.request_date || String(index + 1),
-      accuracy: Number(((row.accuracy ?? 0) * 100).toFixed(2)),
-    }));
+    .map((row, index) => {
+      const result = row.result as {
+        classification?: { cyclone_probability?: number };
+      };
+      const probability = row.cyclone_probability ?? result.classification?.cyclone_probability;
+      return {
+        date: row.created_at ? row.created_at.slice(0, 10) : row.request_date || String(index + 1),
+        accuracy: Number((((row.accuracy ?? probability) ?? 0) * 100).toFixed(2)),
+      };
+    });
   const liveCategories = ["CS", "SCS", "VSCS", "ESCS", "SuCS"].map((code) => ({
     name: code as CategoryCode,
     value: allAnalyses.filter((row) => {
-      const wind = row.wind_speed_kt ?? 0;
-      return code === "SuCS"
-        ? wind >= 120
-        : code === "ESCS"
-          ? wind >= 90 && wind < 120
-          : code === "VSCS"
-            ? wind >= 64 && wind < 90
-            : code === "SCS"
-              ? wind >= 48 && wind < 64
-              : wind >= 34 && wind < 48;
+      const result = row.result as {
+        current_state?: { wind_speed_kt?: number | null };
+      };
+      const category = getCycloneCategory(
+        row.wind_speed_kt ?? result.current_state?.wind_speed_kt,
+        row.cyclone_detected === true,
+      );
+      return category === code;
     }).length,
   }));
+  const latestAnalysis = allAnalyses.find(
+    (row) => row.status === "completed" && row.latitude != null && row.longitude != null,
+  );
+  const savedForecast = latestAnalysis?.result?.forecast_24h as
+    | { available?: boolean; delta_latitude?: number | null; delta_longitude?: number | null }
+    | undefined;
+  const overviewObserved = latestAnalysis
+    ? ([[latestAnalysis.latitude, latestAnalysis.longitude]] as Array<[number, number]>)
+    : observedTrack;
+  const overviewForecast = latestAnalysis
+    ? savedForecast?.available &&
+      savedForecast.delta_latitude != null &&
+      savedForecast.delta_longitude != null
+      ? ([
+          [latestAnalysis.latitude, latestAnalysis.longitude],
+          [
+            latestAnalysis.latitude + savedForecast.delta_latitude,
+            latestAnalysis.longitude + savedForecast.delta_longitude,
+          ],
+        ] as Array<[number, number]>)
+      : ([[latestAnalysis.latitude, latestAnalysis.longitude]] as Array<[number, number]>)
+    : forecastTrack;
 
   const liveStats = metrics
     ? [
@@ -219,11 +302,15 @@ function OverviewPage() {
           >
             <p className="text-xs text-muted-foreground">{stat.label}</p>
             <p className="mt-2 text-3xl font-bold text-foreground">
-              <CountUp
-                value={stat.value}
-                decimals={Number.isInteger(stat.value) ? 0 : 1}
-                suffix={stat.display.replace(/[\d.]/g, "")}
-              />
+              {stat.display === "—" ? (
+                "—"
+              ) : (
+                <CountUp
+                  value={stat.value}
+                  decimals={Number.isInteger(stat.value) ? 0 : 1}
+                  suffix={stat.display.replace(/[\d.]/g, "")}
+                />
+              )}
             </p>
             <p className="mt-2 flex items-center gap-1.5 text-xs">
               <span className={stat.trendGood ? "text-success" : "text-danger"}>
@@ -244,9 +331,11 @@ function OverviewPage() {
         <div className="rounded-2xl border border-border bg-glass p-5 backdrop-blur-xl">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold text-foreground">
-              Prediction accuracy — last 30 days
+              Prediction confidence — last 30 days
             </h2>
-            <span className="text-xs text-muted-foreground">Rolling mean 94.2%</span>
+            <span className="text-xs text-muted-foreground">
+              {metrics?.average_accuracy == null ? "Model confidence; labeled accuracy unavailable" : `Labeled accuracy ${metrics.average_accuracy.toFixed(1)}%`}
+            </span>
           </div>
           <div className="mt-4 h-64">
             <ResponsiveContainer width="100%" height="100%">
@@ -276,7 +365,7 @@ function OverviewPage() {
                 />
                 <Tooltip
                   contentStyle={tooltipStyle}
-                  formatter={(v: number) => [`${v}%`, "Accuracy"]}
+                  formatter={(v: number) => [`${v}%`, "Confidence"]}
                 />
                 <Area
                   type="monotone"
@@ -333,19 +422,29 @@ function OverviewPage() {
               <LiveDot />
               <h2 className="text-sm font-semibold text-foreground">Active system</h2>
             </div>
-            <p className="mt-4 text-xl font-bold text-cyan">{liveCycloneData.name}</p>
-            <p className="text-xs text-muted-foreground">{liveCycloneData.basin}</p>
+            <p className="mt-4 text-xl font-bold text-cyan">
+              {latestAnalysis ? (latestAnalysis.storm_id ?? "Latest model system") : liveCycloneData.name}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {latestAnalysis
+                ? `${latestAnalysis.latitude?.toFixed(3)}°, ${latestAnalysis.longitude?.toFixed(3)}°`
+                : liveCycloneData.basin}
+            </p>
             <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
               <div className="rounded-xl bg-surface-2/70 p-3">
                 <dt className="text-[11px] text-muted-foreground">Wind</dt>
                 <dd className="font-mono font-semibold text-foreground">
-                  {liveCycloneData.windSpeed}
+                  {latestAnalysis?.wind_speed_kt != null
+                    ? `${latestAnalysis.wind_speed_kt.toFixed(2)} kt`
+                    : liveCycloneData.windSpeed}
                 </dd>
               </div>
               <div className="rounded-xl bg-surface-2/70 p-3">
                 <dt className="text-[11px] text-muted-foreground">Pressure</dt>
                 <dd className="font-mono font-semibold text-foreground">
-                  {liveCycloneData.pressure}
+                  {latestAnalysis?.pressure_hpa != null
+                    ? `${latestAnalysis.pressure_hpa.toFixed(2)} hPa`
+                    : liveCycloneData.pressure}
                 </dd>
               </div>
             </dl>
@@ -383,13 +482,23 @@ function OverviewPage() {
               Open prediction
             </Link>
           </div>
-          <TrackSvgMap
-            className="mt-4"
-            observed={observedTrack}
-            forecast={forecastTrack}
-            cone={uncertaintyCone}
-            markerLabel="+48h"
-          />
+          {latestAnalysis ? (
+            <LiveCycloneMap
+              className="mt-4 h-80 overflow-hidden rounded-xl"
+              current={[latestAnalysis.latitude!, latestAnalysis.longitude!]}
+              forecast={overviewForecast.length > 1 ? overviewForecast[1] : undefined}
+              currentDetails={`${latestAnalysis.latitude!.toFixed(4)}°, ${latestAnalysis.longitude!.toFixed(4)}° · ${latestAnalysis.wind_speed_kt ?? "—"} kt · ${latestAnalysis.pressure_hpa ?? "—"} hPa`}
+              forecastDetails={overviewForecast.length > 1 ? `${overviewForecast[1][0].toFixed(4)}°, ${overviewForecast[1][1].toFixed(4)}°` : undefined}
+            />
+          ) : (
+            <TrackSvgMap
+              className="mt-4 h-80"
+              observed={overviewObserved}
+              forecast={overviewForecast}
+              cone={uncertaintyCone}
+              markerLabel="+48h"
+            />
+          )}
         </div>
       </div>
 

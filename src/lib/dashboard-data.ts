@@ -43,12 +43,19 @@ export async function getDashboardMetrics() {
 }
 
 export async function getMyAnalyses() {
-  const { data, error } = await supabase
+  const query = supabase
     .from("analysis_runs")
-    .select(
-      "id, created_at, request_date, request_time, status, cyclone_detected, cyclone_probability, storm_id, latitude, longitude, wind_speed_kt, pressure_hpa, result",
-    )
+    .select("id, created_at, request_date, request_time, status, cyclone_detected, cyclone_probability, storm_id, latitude, longitude, wind_speed_kt, pressure_hpa, processing_time_ms, accuracy, result")
     .order("created_at", { ascending: false });
+  let { data, error } = await query;
+  if (error) {
+    const fallback = await supabase
+      .from("analysis_runs")
+      .select("id, created_at, request_date, request_time, status, cyclone_detected, cyclone_probability, storm_id, latitude, longitude, wind_speed_kt, pressure_hpa, result")
+      .order("created_at", { ascending: false });
+    data = fallback.data;
+    error = fallback.error;
+  }
   if (error) throw error;
   return (data ?? []) as AnalysisRow[];
 }

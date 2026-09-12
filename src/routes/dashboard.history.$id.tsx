@@ -3,9 +3,11 @@ import { ArrowLeft, Download } from "lucide-react";
 
 import { CategoryBadge, GhostButton } from "@/components/brand/primitives";
 import { TrackSvgMap } from "@/components/maps/TrackSvgMap";
+import { LiveCycloneMap } from "@/components/maps/LiveCycloneMap";
 import { forecastTrack, observedTrack, predictionHistory, uncertaintyCone } from "@/data/mockData";
 import { getAnalysis } from "@/lib/dashboard-data";
 import { isSupabaseConfigured } from "@/lib/supabase";
+import { getCycloneCategory } from "@/lib/cyclone-category";
 
 export const Route = createFileRoute("/dashboard/history/$id")({
   head: () => ({
@@ -32,7 +34,12 @@ export const Route = createFileRoute("/dashboard/history/$id")({
             date: `${row.request_date} ${row.request_time}`,
             type: "Detection" as const,
             result: row.cyclone_detected ? "Cyclone Detected" : "No Cyclone Found",
-            category: null,
+            category: getCycloneCategory(
+              row.wind_speed_kt ??
+                (row.result as { current_state?: { wind_speed_kt?: number | null } }).current_state
+                  ?.wind_speed_kt,
+              row.cyclone_detected === true,
+            ),
             confidence: (row.cyclone_probability ?? 0) * 100,
             status:
               row.status === "completed"
@@ -67,6 +74,16 @@ export const Route = createFileRoute("/dashboard/history/$id")({
 
 function HistoryDetail() {
   const { record, live } = Route.useLoaderData();
+  const current = live?.latitude != null && live.longitude != null ? [live.latitude, live.longitude] as [number, number] : null;
+  const forecast = current && live?.result?.forecast_24h && typeof live.result.forecast_24h === "object"
+    ? live.result.forecast_24h as { available?: boolean; delta_latitude?: number | null; delta_longitude?: number | null }
+    : null;
+  const forecastPoint = current && forecast?.available && forecast.delta_latitude != null && forecast.delta_longitude != null
+    ? [current[0] + forecast.delta_latitude, current[1] + forecast.delta_longitude] as [number, number]
+    : null;
+  const currentState = live?.result?.current_state && typeof live.result.current_state === "object"
+    ? live.result.current_state as { r35_km?: number | null }
+    : null;
 
   return (
     <div className="space-y-6">
@@ -109,26 +126,36 @@ function HistoryDetail() {
         </div>
       </div>
 
+      {live ? (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          {[
+            ["Latitude", live.latitude == null ? "—" : `${live.latitude.toFixed(4)}°`],
+            ["Longitude", live.longitude == null ? "—" : `${live.longitude.toFixed(4)}°`],
+            ["Wind", live.wind_speed_kt == null ? "—" : `${live.wind_speed_kt.toFixed(2)} kt`],
+            ["Pressure", live.pressure_hpa == null ? "—" : `${live.pressure_hpa.toFixed(2)} hPa`],
+            ["R35 radius", currentState?.r35_km == null ? "—" : `${currentState.r35_km.toFixed(2)} km`],
+          ].map(([label, value]) => (
+            <div key={label} className="rounded-xl border border-border bg-glass p-4">
+              <p className="text-xs text-muted-foreground">{label}</p>
+              <p className="mt-1 font-mono text-lg font-semibold text-foreground">{value}</p>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
       <div className="rounded-2xl border border-border bg-glass p-5 backdrop-blur-xl">
         <h2 className="text-sm font-semibold text-foreground">Associated track</h2>
-        {live?.latitude != null && live.longitude != null ? (
-          <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-            <div className="rounded-xl bg-surface-2/70 p-3">
-              <p className="text-xs text-muted-foreground">Current location</p>
-              <p className="mt-1 font-mono text-foreground">
-                {live.latitude.toFixed(3)}°, {live.longitude.toFixed(3)}°
-              </p>
-            </div>
-            <div className="rounded-xl bg-surface-2/70 p-3">
-              <p className="text-xs text-muted-foreground">Wind / pressure</p>
-              <p className="mt-1 font-mono text-foreground">
-                {live.wind_speed_kt ?? "—"} kt / {live.pressure_hpa ?? "—"} hPa
-              </p>
-            </div>
-          </div>
+        {current ? (
+          <LiveCycloneMap
+            className="mt-4 h-80 overflow-hidden rounded-xl"
+            current={current}
+            forecast={forecastPoint ?? undefined}
+            currentDetails={`${live?.latitude?.toFixed(4)}°, ${live?.longitude?.toFixed(4)}° · ${live?.wind_speed_kt ?? "—"} kt · ${live?.pressure_hpa ?? "—"} hPa`}
+            forecastDetails={forecastPoint ? `${forecastPoint[0].toFixed(4)}°, ${forecastPoint[1].toFixed(4)}°` : undefined}
+          />
         ) : (
           <TrackSvgMap
-            className="mt-4"
+            className="mt-4 h-80"
             observed={observedTrack}
             forecast={forecastTrack}
             cone={uncertaintyCone}

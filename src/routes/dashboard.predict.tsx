@@ -4,6 +4,8 @@ import { useState, useCallback, useEffect } from "react";
 
 import { CategoryBadge } from "@/components/brand/primitives";
 import { CycloneMap } from "@/components/maps/CycloneMap";
+import { TrackSvgMap, type LatLon } from "@/components/maps/TrackSvgMap";
+import { LiveCycloneMap } from "@/components/maps/LiveCycloneMap";
 import { IntensityChart } from "@/components/prediction/IntensityChart";
 import { ForecastTimeline } from "@/components/prediction/ForecastTimeline";
 import {
@@ -14,6 +16,7 @@ import {
 } from "@/data/cycloneTrackData";
 import { getAnalysis } from "@/lib/dashboard-data";
 import { isSupabaseConfigured } from "@/lib/supabase";
+import type { ModelResponse } from "@/lib/analysis";
 import type { TrackPoint } from "@/data/cycloneTrackData";
 import type { CategoryCode } from "@/data/mockData";
 
@@ -83,16 +86,18 @@ function LandfallBanner() {
 function ForecastPositionsTable({
   currentHour,
   onSelectHour,
+  rows = predictedForecastTrack.filter((point) => point.timeOffset > 0),
 }: {
   currentHour: number;
   onSelectHour: (h: number) => void;
+  rows?: TrackPoint[];
 }) {
   return (
     <div className="overflow-hidden rounded-2xl border border-border bg-glass shadow-xl backdrop-blur-xl">
       <div className="flex items-center justify-between border-b border-border px-5 py-3.5">
         <h2 className="text-sm font-semibold text-foreground">Forecast Positions</h2>
         <span className="rounded-md border border-border bg-surface/60 px-2 py-0.5 font-mono text-[10px] text-muted-foreground">
-          DeepTrack-V4 Ensemble
+          Backend model output
         </span>
       </div>
 
@@ -109,9 +114,7 @@ function ForecastPositionsTable({
             </tr>
           </thead>
           <tbody>
-            {predictedForecastTrack
-              .filter((p) => p.timeOffset > 0)
-              .map((row) => {
+            {rows.map((row) => {
                 const isActive = Math.abs(currentHour - row.timeOffset) < 3 && currentHour > 0;
                 return (
                   <tr
@@ -168,14 +171,25 @@ function PredictPage() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
   const [livePoint, setLivePoint] = useState<TrackPoint | null>(null);
+  const [modelResult, setModelResult] = useState<ModelResponse | null>(null);
 
   useEffect(() => {
-    if (!isSupabaseConfigured) return;
     const id = localStorage.getItem("cyclone-ai-latest-analysis-id");
-    if (!id) return;
-    void getAnalysis(id).then((analysis) => {
-      if (analysis.latitude == null || analysis.longitude == null) return;
-      const wind = analysis.wind_speed_kt ?? 0;
+    const stored = localStorage.getItem("cyclone-ai-latest-analysis");
+    const applyPoint = (source: {
+      request?: { date: string; time: string };
+      latitude?: number | null;
+      longitude?: number | null;
+      wind_speed_kt?: number | null;
+      pressure_hpa?: number | null;
+      cyclone_probability?: number | null;
+      result?: ModelResponse;
+    }) => {
+      const current = source.result?.current_state;
+      const latitude = source.latitude ?? current?.latitude;
+      const longitude = source.longitude ?? current?.longitude;
+      if (latitude == null || longitude == null) return;
+      const wind = source.wind_speed_kt ?? current?.wind_speed_kt ?? 0;
       const category: CategoryCode =
         wind >= 120
           ? "SuCS"
@@ -189,13 +203,13 @@ function PredictPage() {
       setLivePoint({
         timeOffset: 0,
         label: "Now",
-        timestamp: `${analysis.request_date} ${analysis.request_time}`,
-        lat: analysis.latitude,
-        lon: analysis.longitude,
+        timestamp: source.request ? `${source.request.date} ${source.request.time}` : "Latest observation",
+        lat: latitude,
+        lon: longitude,
         msw: wind,
-        pressure: analysis.pressure_hpa ?? 0,
+        pressure: source.pressure_hpa ?? current?.pressure_hpa ?? 0,
         category,
-        confidence: (analysis.cyclone_probability ?? 0) * 100,
+        confidence: (source.cyclone_probability ?? source.result?.classification.cyclone_probability ?? 0) * 100,
         speed: 0,
         heading: "—",
         headingDeg: 0,
@@ -204,6 +218,20 @@ function PredictPage() {
         r64: 0,
         distanceToLandfall: 0,
       });
+    };
+    if (stored) {
+      try {
+        const result = JSON.parse(stored) as ModelResponse;
+        setModelResult(result);
+        applyPoint({ result });
+      } catch {
+        localStorage.removeItem("cyclone-ai-latest-analysis");
+      }
+    }
+    if (!isSupabaseConfigured || !id) return;
+    void getAnalysis(id).then((analysis) => {
+      if (analysis.result) setModelResult(analysis.result as unknown as ModelResponse);
+      applyPoint(analysis);
     });
   }, []);
 
@@ -228,6 +256,27 @@ function PredictPage() {
 
   // Derive the current cyclone state from timeline position
   const currentPoint = livePoint ?? getInterpolatedState(timelineHour);
+  const liveCurrent: LatLon | null = modelResult?.current_state
+    ? [modelResult.current_state.latitude, modelResult.current_state.longitude]
+    : null;
+  const liveForecast: LatLon | null =
+    liveCurrent && modelResult.forecast_24h?.available && modelResult.forecast_24h.delta_latitude != null && modelResult.forecast_24h.delta_longitude != null
+      ? [
+          liveCurrent[0] + modelResult.forecast_24h.delta_latitude,
+          liveCurrent[1] + modelResult.forecast_24h.delta_longitude,
+        ]
+      : null;
+  const liveForecastPoint: TrackPoint | null = liveCurrent && liveForecast && modelResult.current_state && modelResult.forecast_24h
+    ? {
+        ...currentPoint,
+        timeOffset: 24,
+        label: "+24h",
+        lat: liveForecast[0],
+        lon: liveForecast[1],
+        msw: currentPoint.msw + (modelResult.forecast_24h.delta_wind_speed_kt ?? 0),
+        pressure: currentPoint.pressure + (modelResult.forecast_24h.delta_pressure_hpa ?? 0),
+      }
+    : null;
 
   return (
     <div className="space-y-5">
@@ -249,9 +298,9 @@ function PredictPage() {
           </div>
           <h1 className="mt-1.5 text-2xl font-bold text-foreground">Track Prediction</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            48-hour AI track &amp; intensity forecast for{" "}
-            <span className="font-semibold text-cyan">{activeCycloneInfo.name}</span> —{" "}
-            {activeCycloneInfo.basin}
+            {modelResult
+              ? `Real model output for ${modelResult.request.date} at ${modelResult.request.time}`
+              : `48-hour AI track & intensity forecast for ${activeCycloneInfo.name} — ${activeCycloneInfo.basin}`}
           </p>
         </div>
 
@@ -267,14 +316,15 @@ function PredictPage() {
         </div>
       </motion.div>
 
-      {/* ── Landfall Warning Banner ── */}
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.15 }}
-      >
-        <LandfallBanner />
-      </motion.div>
+      {!modelResult ? (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.15 }}
+        >
+          <LandfallBanner />
+        </motion.div>
+      ) : null}
 
       {/* ── Main Grid: Map (left 60%) + Panels (right 40%) ── */}
       <div className="grid gap-5 xl:grid-cols-[minmax(0,60%)_minmax(0,40%)]">
@@ -286,21 +336,32 @@ function PredictPage() {
           className="flex flex-col gap-4"
         >
           {/* Hero: Full India/Bay of Bengal Interactive Map */}
-          <CycloneMap
-            currentPoint={currentPoint}
-            timelineHour={timelineHour}
-            onSelectForecastHour={handleSelectForecastHour}
-          />
+          {liveCurrent ? (
+            <LiveCycloneMap
+              className="h-[520px] lg:h-[620px] rounded-2xl border border-border bg-surface-2/40 p-3 shadow-2xl"
+              current={liveCurrent}
+              forecast={liveForecast ?? undefined}
+              currentDetails={`${liveCurrent[0].toFixed(4)}°, ${liveCurrent[1].toFixed(4)}°`}
+              forecastDetails={liveForecast ? `${liveForecast[0].toFixed(4)}°, ${liveForecast[1].toFixed(4)}°` : undefined}
+            />
+          ) : (
+            <CycloneMap
+              currentPoint={currentPoint}
+              timelineHour={timelineHour}
+              onSelectForecastHour={handleSelectForecastHour}
+            />
+          )}
 
-          {/* Timeline Animation Controls — below the map */}
-          <ForecastTimeline
-            timelineHour={timelineHour}
-            onTimelineChange={handleTimelineChange}
-            isPlaying={isPlaying}
-            onTogglePlay={handleTogglePlay}
-            speed={speed}
-            onChangeSpeed={setSpeed}
-          />
+          {!modelResult ? (
+            <ForecastTimeline
+              timelineHour={timelineHour}
+              onTimelineChange={handleTimelineChange}
+              isPlaying={isPlaying}
+              onTogglePlay={handleTogglePlay}
+              speed={speed}
+              onChangeSpeed={setSpeed}
+            />
+          ) : null}
         </motion.div>
 
         {/* ── Right Column: Data Panels ── */}
@@ -351,19 +412,64 @@ function PredictPage() {
             ))}
           </div>
 
-          {/* Intensity Forecast Chart with ensemble spread */}
-          <IntensityChart
-            currentTimelineHour={timelineHour}
-            onSelectHour={handleSelectForecastHour}
-          />
+          {!modelResult ? (
+            <IntensityChart
+              currentTimelineHour={timelineHour}
+              onSelectHour={handleSelectForecastHour}
+            />
+          ) : null}
 
           {/* Forecast Positions Table */}
           <ForecastPositionsTable
             currentHour={timelineHour}
             onSelectHour={handleSelectForecastHour}
+            rows={liveForecastPoint ? [liveForecastPoint] : undefined}
           />
 
-          {/* System Information Footer */}
+          {modelResult ? (
+            <div className="rounded-2xl border border-cyan/30 bg-cyan/5 p-5">
+              <h2 className="text-sm font-semibold text-foreground">Latest model forecast</h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Backend output for {modelResult.request.date} at {modelResult.request.time}
+              </p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 text-sm">
+                <div>
+                  <p className="text-xs text-muted-foreground">Current position</p>
+                  <p className="mt-1 font-mono text-foreground">
+                    {modelResult.current_state
+                      ? `${modelResult.current_state.latitude.toFixed(4)}°, ${modelResult.current_state.longitude.toFixed(4)}°`
+                      : "Unavailable"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">24h position change</p>
+                  <p className="mt-1 font-mono text-foreground">
+                    {modelResult.forecast_24h?.available
+                      ? `${modelResult.forecast_24h.delta_latitude?.toFixed(4)}°, ${modelResult.forecast_24h.delta_longitude?.toFixed(4)}°`
+                      : modelResult.forecast_24h?.reason ?? "Unavailable"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">24h wind change</p>
+                  <p className="mt-1 font-mono text-foreground">
+                    {modelResult.forecast_24h?.delta_wind_speed_kt == null
+                      ? "Unavailable"
+                      : `${modelResult.forecast_24h.delta_wind_speed_kt.toFixed(2)} kt`}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">24h pressure change</p>
+                  <p className="mt-1 font-mono text-foreground">
+                    {modelResult.forecast_24h?.delta_pressure_hpa == null
+                      ? "Unavailable"
+                      : `${modelResult.forecast_24h.delta_pressure_hpa.toFixed(2)} hPa`}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {!modelResult ? (
           <div className="rounded-xl border border-border/60 bg-surface/40 p-4 backdrop-blur-xl">
             <p className="text-[10px] font-bold tracking-[0.16em] text-muted-foreground uppercase">
               AI Prediction System
@@ -381,6 +487,7 @@ function PredictPage() {
               <span className="font-mono text-foreground">{activeCycloneInfo.basin}</span>
             </div>
           </div>
+          ) : null}
         </motion.div>
       </div>
     </div>

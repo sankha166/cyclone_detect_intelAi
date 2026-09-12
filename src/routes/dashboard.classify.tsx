@@ -71,11 +71,20 @@ function Gauge({ value, max }: { value: number; max: number }) {
 
 function ClassifyPage() {
   const [analysis, setAnalysis] = useState<AnalysisRow | null>(null);
+  const [localResult, setLocalResult] = useState<{ current_state?: { wind_speed_kt?: number } } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isSupabaseConfigured) return;
     const id = localStorage.getItem("cyclone-ai-latest-analysis-id");
+    const storedResult = localStorage.getItem("cyclone-ai-latest-analysis");
+    if (storedResult) {
+      try {
+        setLocalResult(JSON.parse(storedResult));
+      } catch {
+        localStorage.removeItem("cyclone-ai-latest-analysis");
+      }
+    }
     if (!id) return;
     void getAnalysis(id)
       .then(setAnalysis)
@@ -84,7 +93,7 @@ function ClassifyPage() {
       );
   }, []);
 
-  const wind = analysis?.wind_speed_kt ?? classificationResult.msw;
+  const wind = analysis?.wind_speed_kt ?? localResult?.current_state?.wind_speed_kt ?? classificationResult.msw;
   const category: CategoryCode =
     wind >= 120 ? "SuCS" : wind >= 90 ? "ESCS" : wind >= 64 ? "VSCS" : wind >= 48 ? "SCS" : "CS";
   const liveResult = analysis
@@ -104,6 +113,11 @@ function ClassifyPage() {
         <p className="mt-1 text-sm text-muted-foreground">
           IMD-scale category prediction with maximum sustained wind estimation and Dvorak T-number.
         </p>
+          {(analysis || localResult) ? (
+            <p className="mt-2 text-xs text-muted-foreground">
+              Based on the latest detection observation and its submitted date/time.
+            </p>
+          ) : null}
       </div>
 
       {error ? (

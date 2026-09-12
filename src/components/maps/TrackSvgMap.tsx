@@ -41,6 +41,8 @@ export function TrackSvgMap({ observed = [], forecast = [], cone = [], markerLab
 
   const last = forecast.length ? forecast[forecast.length - 1] : observed[observed.length - 1];
   const current = observed.length ? observed[observed.length - 1] : undefined;
+  const gridLatitudes = [bounds.minLat, (bounds.minLat + bounds.maxLat) / 2, bounds.maxLat];
+  const gridLongitudes = [bounds.minLon, (bounds.minLon + bounds.maxLon) / 2, bounds.maxLon];
 
   return (
     <div className={className}>
@@ -57,6 +59,22 @@ export function TrackSvgMap({ observed = [], forecast = [], cone = [], markerLab
 
         <rect width={W} height={H} fill="var(--surface)" />
         <rect width={W} height={H} fill="url(#track-grid)" />
+        {gridLatitudes.map((latitude) => {
+          const [, y] = project([latitude, bounds.minLon]);
+          return (
+            <text key={`lat-${latitude}`} x="6" y={Math.max(14, y - 4)} fontSize="9" fill="var(--muted-foreground)">
+              {latitude.toFixed(1)}°
+            </text>
+          );
+        })}
+        {gridLongitudes.map((longitude) => {
+          const [x] = project([bounds.minLat, longitude]);
+          return (
+            <text key={`lon-${longitude}`} x={Math.min(W - 34, Math.max(4, x + 4))} y={H - 6} fontSize="9" fill="var(--muted-foreground)">
+              {longitude.toFixed(1)}°
+            </text>
+          );
+        })}
 
         {cone.length > 2 ? (
           <path
@@ -105,7 +123,16 @@ export function TrackSvgMap({ observed = [], forecast = [], cone = [], markerLab
               <animate attributeName="opacity" values="0.8;0.1;0.8" dur="2.4s" repeatCount="indefinite" />
             </circle>
             <circle cx={project(current)[0]} cy={project(current)[1]} r="4.5" fill="var(--cyan)" />
+            <text x={project(current)[0] + 10} y={project(current)[1] + 4} fontSize="10" fontWeight="600" fill="var(--cyan)">
+              Now
+            </text>
           </g>
+        ) : null}
+
+        {forecast.length > 1 ? (
+          <text x={project(forecast[forecast.length - 1])[0] + 10} y={project(forecast[forecast.length - 1])[1] + 4} fontSize="10" fontWeight="600" fill="var(--foreground)">
+            +24h
+          </text>
         ) : null}
 
         {markerLabel && last ? (

@@ -34,7 +34,25 @@ export const Route = createFileRoute("/dashboard")({
   beforeLoad: async () => {
     if (isSupabaseConfigured) {
       const { data } = await supabase.auth.getSession();
-      if (!data.session) throw redirect({ to: "/login" });
+      if (data.session) return;
+      const restored = await new Promise<boolean>((resolve) => {
+        let settled = false;
+        let timeout: ReturnType<typeof setTimeout> | undefined;
+        let unsubscribe = () => {};
+        const finish = (hasSession: boolean) => {
+          if (settled) return;
+          settled = true;
+          unsubscribe();
+          if (timeout) clearTimeout(timeout);
+          resolve(hasSession);
+        };
+        timeout = setTimeout(() => finish(false), 1500);
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+          finish(Boolean(session));
+        });
+        unsubscribe = () => subscription.unsubscribe();
+      });
+      if (!restored) throw redirect({ to: "/login" });
     } else {
       throw redirect({ to: "/login" });
     }

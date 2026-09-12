@@ -6,6 +6,7 @@ import { CategoryBadge, GhostButton } from "@/components/brand/primitives";
 import { predictionHistory, type PredictionRow } from "@/data/mockData";
 import { getMyAnalyses, type AnalysisRow } from "@/lib/dashboard-data";
 import { isSupabaseConfigured } from "@/lib/supabase";
+import { getCycloneCategory } from "@/lib/cyclone-category";
 
 export const Route = createFileRoute("/dashboard/history/")({
   head: () => ({
@@ -50,7 +51,12 @@ function HistoryPage() {
         date: `${row.request_date} ${row.request_time}`,
         type: "Detection",
         result: row.cyclone_detected ? "Cyclone Detected" : "No Cyclone Found",
-        category: null,
+        category: getCycloneCategory(
+          row.wind_speed_kt ??
+            (row.result as { current_state?: { wind_speed_kt?: number | null } }).current_state
+              ?.wind_speed_kt,
+          row.cyclone_detected === true,
+        ),
         confidence: (row.cyclone_probability ?? 0) * 100,
         status:
           row.status === "completed"

@@ -54,9 +54,18 @@ function DetectPage() {
       const modelResult = await runCycloneModel(inputRef.current.files[0], date, time);
       setResult(modelResult);
       localStorage.setItem("cyclone-ai-latest-analysis", JSON.stringify(modelResult));
-      const analysisId = await saveAnalysis(inputRef.current.files[0], modelResult);
-      if (analysisId) localStorage.setItem("cyclone-ai-latest-analysis-id", analysisId);
       setPhase("done");
+
+      try {
+        const analysisId = await saveAnalysis(inputRef.current.files[0], modelResult);
+        if (analysisId) localStorage.setItem("cyclone-ai-latest-analysis-id", analysisId);
+      } catch (cause) {
+        setError(
+          `Prediction completed, but it could not be saved: ${
+            cause instanceof Error ? cause.message : "storage is unavailable"
+          }`,
+        );
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Analysis failed. Please try again.");
       setPhase("preview");
@@ -304,23 +313,30 @@ function DetectPage() {
                     <div className="rounded-xl bg-surface-2/70 p-4">
                       <p className="text-xs text-muted-foreground">TCIR match</p>
                       <p className="mt-1 font-semibold text-foreground">
-                        {result.tcir_match.storm_id ?? "No match"}
+                        {result.tcir_match?.storm_id ?? "No match"}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {result.tcir_match.frame_count} frames ·{" "}
-                        {result.tcir_match.matched_time ?? "Unknown time"}
+                        {result.tcir_match
+                          ? `${result.tcir_match.frame_count} frames · ${result.tcir_match.matched_time ?? "Unknown time"}`
+                          : "No matching frame"}
                       </p>
                     </div>
                     <div className="rounded-xl bg-surface-2/70 p-4">
                       <p className="text-xs text-muted-foreground">Current state</p>
-                      <p className="mt-1 font-mono text-sm text-foreground">
-                        {result.current_state.latitude.toFixed(3)}°,{" "}
-                        {result.current_state.longitude.toFixed(3)}°
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {result.current_state.wind_speed_kt.toFixed(2)} kt ·{" "}
-                        {result.current_state.pressure_hpa.toFixed(2)} hPa
-                      </p>
+                      {result.current_state ? (
+                        <>
+                          <p className="mt-1 font-mono text-sm text-foreground">
+                            {result.current_state.latitude.toFixed(3)}°,{" "}
+                            {result.current_state.longitude.toFixed(3)}°
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {result.current_state.wind_speed_kt.toFixed(2)} kt ·{" "}
+                            {result.current_state.pressure_hpa.toFixed(2)} hPa
+                          </p>
+                        </>
+                      ) : (
+                        <p className="mt-1 text-sm text-muted-foreground">Unavailable</p>
+                      )}
                     </div>
                   </div>
                 ) : null}
@@ -328,9 +344,9 @@ function DetectPage() {
                   <div className="rounded-xl border border-border bg-surface-2/50 p-4">
                     <p className="text-xs font-semibold text-foreground">24-hour forecast change</p>
                     <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-                      {result.forecast_24h.available
+                      {result.forecast_24h?.available
                         ? `Position Δ ${result.forecast_24h.delta_latitude?.toFixed(2)}°, ${result.forecast_24h.delta_longitude?.toFixed(2)}° · Wind Δ ${result.forecast_24h.delta_wind_speed_kt?.toFixed(2)} kt · Pressure Δ ${result.forecast_24h.delta_pressure_hpa?.toFixed(2)} hPa`
-                        : (result.forecast_24h.reason ?? "Unavailable")}
+                        : (result.forecast_24h?.reason ?? "Unavailable")}
                     </p>
                   </div>
                 ) : null}
@@ -338,6 +354,37 @@ function DetectPage() {
                   <p className="text-sm leading-relaxed text-muted-foreground">
                     {result.llm_summary}
                   </p>
+                ) : null}
+
+                {result?.web_information?.length ? (
+                  <div className="rounded-xl border border-border bg-surface-2/50 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <h3 className="text-sm font-semibold text-foreground">Related cyclone news</h3>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Latest sources returned with this model analysis
+                        </p>
+                      </div>
+                      <span className="text-xs text-muted-foreground">{result.web_information.length} sources</span>
+                    </div>
+                    <div className="mt-3 space-y-2">
+                      {result.web_information.slice(0, 4).map((item) => (
+                        <a
+                          key={`${item.url}-${item.title}`}
+                          href={item.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="block rounded-lg border border-border/70 bg-surface/50 p-3 transition-colors hover:border-cyan/50"
+                        >
+                          <p className="text-sm font-medium text-foreground">{item.title}</p>
+                          <p className="mt-1 text-[11px] text-cyan">{item.source}</p>
+                          {item.summary ? (
+                            <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{item.summary}</p>
+                          ) : null}
+                        </a>
+                      ))}
+                    </div>
+                  </div>
                 ) : null}
 
                 <Link to="/dashboard/classify">
